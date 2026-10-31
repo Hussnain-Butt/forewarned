@@ -92,9 +92,16 @@ permissions:
   scopes:
     - read:jira-work
     - write:jira-work
+    - read:space:confluence
+    - write:page:confluence
 app:
   runtime:
     name: nodejs24.x
     memoryMB: 256
     architecture: arm64
   id: ari:cloud:ecosystem::app/d25bd899-00db-4ac1-a33b-c001e7d4b41c
+  compatibility:
+    jira:
+      required: true
+    confluence:
+      required: false
