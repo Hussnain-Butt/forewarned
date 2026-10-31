@@ -1,0 +1,47 @@
+{
+  "note": "Seed roles from docs/idea.md section 2. Each displayName must be an existing user on the demo site; assign-personas.mjs assigns that role's seeded work items to the user. Replace every TODO before running it. No emails, account IDs or secrets in this file.",
+  "roles": [
+    {
+      "role": "launch-lead",
+      "prefix": "ll",
+      "title": "Launch lead",
+      "persona": "Ayesha",
+      "displayName": "Alana Grant"
+    },
+    {
+      "role": "backend",
+      "prefix": "bk",
+      "title": "Backend engineer",
+      "persona": "Bilal",
+      "displayName": "Mitch Davis"
+    },
+    {
+      "role": "engineering-manager",
+      "prefix": "em",
+      "title": "Engineering manager",
+      "persona": "Sana",
+      "displayName": "Jennifer Evans"
+    },
+    {
+      "role": "mobile",
+      "prefix": "mb",
+      "title": "Mobile and front-end engineer",
+      "persona": "Omar",
+      "displayName": "TODO: pick a demo user"
+    },
+    {
+      "role": "qa",
+      "prefix": "qa",
+      "title": "QA engineer",
+      "persona": "Hira",
+      "displayName": "TODO: pick a demo user"
+    },
+    {
+      "role": "platform",
+      "prefix": "pf",
+      "title": "Platform engineer (dependency owner)",
+      "persona": "Danish",
+      "displayName": "TODO: pick a demo user"
+    }
+  ]
+}

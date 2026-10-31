@@ -1,0 +1,857 @@
+{
+  "schemaVersion": 1,
+  "story": "docs/stories/001-seed-data.md",
+  "importFile": "forewarned-demo.json",
+  "dates": {
+    "mode": "relative",
+    "note": "Day numbers count whole days from the import day: -14 is 14 days before the import, 42 is 42 days after. The Jira JSON importer accepts relative past and future dates (proven in M0c and in the 31 Oct 2026 future-date check)."
+  },
+  "toleranceDays": 1,
+  "spaces": [
+    {
+      "key": "CHK",
+      "name": "Checkout",
+      "workItems": 162
+    },
+    {
+      "key": "PLT",
+      "name": "Platform",
+      "workItems": 32
+    }
+  ],
+  "currentEpic": {
+    "externalId": "ll-chk-e11",
+    "summary": "Checkout v2 launch",
+    "components": [
+      "Payments",
+      "Web"
+    ],
+    "startDay": -14,
+    "dueDay": 42,
+    "finishDay": null,
+    "daysLate": null,
+    "durationDays": null,
+    "children": 21,
+    "childrenAtStart": 15,
+    "childrenAddedAfterStart": 6,
+    "growthPercent": 40,
+    "platformBlockers": [
+      {
+        "blocked": "bk-chk-e11-05",
+        "blocker": "pf-plt-e03-02",
+        "blockerResolved": true
+      },
+      {
+        "blocked": "bk-chk-e11-03",
+        "blocker": "un-plt-e03-07",
+        "blockerResolved": false
+      }
+    ],
+    "status": "In Progress",
+    "plannedDays": 56,
+    "openChildren": 17,
+    "unassignedOpenChildren": 5,
+    "fixVersion": "Checkout 2.0"
+  },
+  "comparison": {
+    "rule": "matched on components Payments, Web",
+    "epics": [
+      {
+        "externalId": "ll-chk-e10",
+        "summary": "Delivery slot selection at checkout",
+        "components": [
+          "Web",
+          "Notifications"
+        ],
+        "startDay": -110,
+        "dueDay": -45,
+        "finishDay": -15,
+        "daysLate": 30,
+        "durationDays": 95,
+        "children": 16,
+        "childrenAtStart": 10,
+        "childrenAddedAfterStart": 6,
+        "growthPercent": 60,
+        "platformBlockers": [
+          {
+            "blocked": "bk-chk-e10-02",
+            "blocker": "pf-plt-t02",
+            "blockerResolved": true
+          }
+        ]
+      },
+      {
+        "externalId": "ll-chk-e09",
+        "summary": "Promo codes at checkout",
+        "components": [
+          "Web",
+          "Payments"
+        ],
+        "startDay": -140,
+        "dueDay": -85,
+        "finishDay": -88,
+        "daysLate": -3,
+        "durationDays": 52,
+        "children": 12,
+        "childrenAtStart": 10,
+        "childrenAddedAfterStart": 2,
+        "growthPercent": 20,
+        "platformBlockers": [
+          {
+            "blocked": "bk-chk-e09-02",
+            "blocker": "pf-plt-t01",
+            "blockerResolved": true
+          }
+        ]
+      },
+      {
+        "externalId": "ll-chk-e08",
+        "summary": "Split payment across two cards",
+        "components": [
+          "Payments"
+        ],
+        "startDay": -170,
+        "dueDay": null,
+        "finishDay": -93,
+        "daysLate": null,
+        "durationDays": 77,
+        "children": 10,
+        "childrenAtStart": 8,
+        "childrenAddedAfterStart": 2,
+        "growthPercent": 25,
+        "platformBlockers": []
+      },
+      {
+        "externalId": "ll-chk-e07",
+        "summary": "Wallet top-up",
+        "components": [
+          "Payments",
+          "Mobile"
+        ],
+        "startDay": -200,
+        "dueDay": -140,
+        "finishDay": -98,
+        "daysLate": 42,
+        "durationDays": 102,
+        "children": 18,
+        "childrenAtStart": 12,
+        "childrenAddedAfterStart": 6,
+        "growthPercent": 50,
+        "platformBlockers": [
+          {
+            "blocked": "bk-chk-e07-01",
+            "blocker": "pf-plt-e02-02",
+            "blockerResolved": true
+          }
+        ]
+      },
+      {
+        "externalId": "ll-chk-e06",
+        "summary": "Guest checkout",
+        "components": [
+          "Web"
+        ],
+        "startDay": -232,
+        "dueDay": -180,
+        "finishDay": -168,
+        "daysLate": 12,
+        "durationDays": 64,
+        "children": 7,
+        "childrenAtStart": 5,
+        "childrenAddedAfterStart": 2,
+        "growthPercent": 40,
+        "platformBlockers": []
+      },
+      {
+        "externalId": "ll-chk-e04",
+        "summary": "In-app checkout for the mobile app",
+        "components": [
+          "Mobile",
+          "Payments"
+        ],
+        "startDay": -290,
+        "dueDay": -230,
+        "finishDay": -209,
+        "daysLate": 21,
+        "durationDays": 81,
+        "children": 12,
+        "childrenAtStart": 8,
+        "childrenAddedAfterStart": 4,
+        "growthPercent": 50,
+        "platformBlockers": [
+          {
+            "blocked": "bk-chk-e04-05",
+            "blocker": "pf-plt-e01-06",
+            "blockerResolved": true
+          }
+        ]
+      },
+      {
+        "externalId": "ll-chk-e03",
+        "summary": "Address autocomplete at checkout",
+        "components": [
+          "Web"
+        ],
+        "startDay": -318,
+        "dueDay": null,
+        "finishDay": -241,
+        "daysLate": null,
+        "durationDays": 77,
+        "children": 12,
+        "childrenAtStart": 9,
+        "childrenAddedAfterStart": 3,
+        "growthPercent": 33,
+        "platformBlockers": []
+      },
+      {
+        "externalId": "ll-chk-e01",
+        "summary": "Saved cards for returning shoppers",
+        "components": [
+          "Payments",
+          "Web"
+        ],
+        "startDay": -352,
+        "dueDay": -297,
+        "finishDay": -283,
+        "daysLate": 14,
+        "durationDays": 69,
+        "children": 14,
+        "childrenAtStart": 10,
+        "childrenAddedAfterStart": 4,
+        "growthPercent": 40,
+        "platformBlockers": [
+          {
+            "blocked": "bk-chk-e01-01",
+            "blocker": "pf-plt-e01-01",
+            "blockerResolved": true
+          }
+        ]
+      }
+    ]
+  },
+  "plantedRisks": [
+    {
+      "id": "P1",
+      "name": "Platform dependency repeats",
+      "signal": "dependencies",
+      "rule": "dependency",
+      "externalIds": [
+        "un-plt-e03-07",
+        "bk-chk-e11-03",
+        "ll-chk-e10",
+        "ll-chk-e09",
+        "ll-chk-e07",
+        "ll-chk-e04",
+        "ll-chk-e01"
+      ],
+      "expectedEvidence": [
+        {
+          "type": "open-blocker",
+          "baseRate": false,
+          "mustLink": [
+            "un-plt-e03-07",
+            "bk-chk-e11-03"
+          ],
+          "numbers": {
+            "daysOverdue": 5
+          },
+          "expect": "\"Refund status endpoint in gateway v3\" (PLT, To Do, unassigned, 5 days overdue) blocks \"Refund to the original payment method from the order page\" in Checkout v2 launch."
+        },
+        {
+          "type": "blocker-history",
+          "baseRate": true,
+          "mustLink": [
+            "ll-chk-e10",
+            "ll-chk-e09",
+            "ll-chk-e07",
+            "ll-chk-e04",
+            "ll-chk-e01"
+          ],
+          "numbers": {
+            "late": 4,
+            "epics": 5
+          },
+          "expect": "4 of 5 comparable epics that had work blocked by PLT work items finished late."
+        },
+        {
+          "type": "blocker-example",
+          "baseRate": false,
+          "mustLink": [
+            "ll-chk-e07",
+            "bk-chk-e07-01",
+            "pf-plt-e02-02"
+          ],
+          "numbers": {
+            "daysLate": 42,
+            "blockerDaysAfterOwnDue": 28
+          },
+          "expect": "Wallet top-up finished 42 days late; its work item \"Top up the wallet balance from a saved card\" was blocked by \"Credit and debit API for stored balances\", which was resolved 28 days after its own due date."
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "Comparable epics usually finish late",
+      "signal": "slip",
+      "rule": "slip-base-rate",
+      "externalIds": [
+        "ll-chk-e10",
+        "ll-chk-e09",
+        "ll-chk-e07",
+        "ll-chk-e06",
+        "ll-chk-e04",
+        "ll-chk-e01"
+      ],
+      "expectedEvidence": [
+        {
+          "type": "slip-base-rate",
+          "baseRate": true,
+          "mustLink": [
+            "ll-chk-e10",
+            "ll-chk-e07",
+            "ll-chk-e06",
+            "ll-chk-e04",
+            "ll-chk-e01"
+          ],
+          "numbers": {
+            "late": 5,
+            "withDueDate": 6,
+            "medianDaysLate": 21,
+            "minDaysLate": 12,
+            "maxDaysLate": 42
+          },
+          "expect": "5 of 6 comparable epics with a due date finished late, by a median of 21 days (from 12 to 42 days).",
+          "note": "The median, minimum and maximum are taken over the epics that finished late."
+        },
+        {
+          "type": "slip-example",
+          "baseRate": false,
+          "mustLink": [
+            "ll-chk-e07"
+          ],
+          "numbers": {
+            "daysLate": 42
+          },
+          "expect": "Wallet top-up was due on day -140 and finished on day -98, 42 days late."
+        },
+        {
+          "type": "slip-example",
+          "baseRate": false,
+          "mustLink": [
+            "ll-chk-e10"
+          ],
+          "numbers": {
+            "daysLate": 30
+          },
+          "expect": "Delivery slot selection at checkout was due on day -45 and finished on day -15, 30 days late."
+        },
+        {
+          "type": "slip-example",
+          "baseRate": false,
+          "mustLink": [
+            "ll-chk-e04"
+          ],
+          "numbers": {
+            "daysLate": 21
+          },
+          "expect": "In-app checkout for the mobile app was due on day -230 and finished on day -209, 21 days late."
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "The plan is shorter than history",
+      "signal": "slip",
+      "rule": "plan-shorter",
+      "externalIds": [
+        "ll-chk-e11",
+        "ll-chk-e10",
+        "ll-chk-e09",
+        "ll-chk-e08",
+        "ll-chk-e07",
+        "ll-chk-e06",
+        "ll-chk-e04",
+        "ll-chk-e03",
+        "ll-chk-e01"
+      ],
+      "expectedEvidence": [
+        {
+          "type": "duration-base-rate",
+          "baseRate": true,
+          "mustLink": [],
+          "numbers": {
+            "medianDurationDays": 77,
+            "epics": 8,
+            "withoutDueDate": 2
+          },
+          "expect": "Comparable epics took a median of 77 days from start to done (8 epics, 2 of them without a due date)."
+        },
+        {
+          "type": "plan-vs-history",
+          "baseRate": true,
+          "mustLink": [
+            "ll-chk-e11"
+          ],
+          "numbers": {
+            "plannedDays": 56,
+            "longerThanPlan": 7,
+            "epics": 8
+          },
+          "expect": "Checkout v2 launch is planned for 56 days (started on day -14, due on day 42); 7 of 8 comparable epics took longer than 56 days."
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Scope keeps growing",
+      "signal": "scope",
+      "rule": "scope-growth",
+      "externalIds": [
+        "ll-chk-e11",
+        "ll-chk-e10",
+        "ll-chk-e09",
+        "ll-chk-e08",
+        "ll-chk-e07",
+        "ll-chk-e06",
+        "ll-chk-e04",
+        "ll-chk-e03",
+        "ll-chk-e01"
+      ],
+      "expectedEvidence": [
+        {
+          "type": "scope-current",
+          "baseRate": false,
+          "mustLink": [
+            "ll-chk-e11"
+          ],
+          "numbers": {
+            "atStart": 15,
+            "added": 6,
+            "growthPercent": 40,
+            "total": 21
+          },
+          "expect": "Checkout v2 launch started with 15 work items and has gained 6 since, 40% more; it now has 21."
+        },
+        {
+          "type": "scope-base-rate",
+          "baseRate": true,
+          "mustLink": [],
+          "numbers": {
+            "medianGrowthPercent": 40,
+            "epics": 8,
+            "minGrowthPercent": 20,
+            "maxGrowthPercent": 60,
+            "leftOut": 0
+          },
+          "expect": "Comparable epics gained a median of 40% more work items after they started (8 epics, from 20% to 60%)."
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "One person is spread thin",
+      "signal": "load",
+      "rule": "load",
+      "role": "backend",
+      "externalIds": [
+        "ll-chk-e11",
+        "pf-plt-e03",
+        "em-chk-e12"
+      ],
+      "expectedEvidence": [
+        {
+          "type": "load-person",
+          "baseRate": false,
+          "role": "backend",
+          "mustLink": [
+            "pf-plt-e03",
+            "em-chk-e12"
+          ],
+          "numbers": {
+            "openTotal": 14,
+            "openInEpic": 6,
+            "peopleOnEpic": 5,
+            "medianOpen": 3,
+            "otherEpicsInProgress": 2
+          },
+          "expect": "The backend person has 14 open work items in total, 6 of them in this epic; the median for the 5 people on this epic is 3. They also have open work items in 2 other epics in progress: Payment gateway API v3 (PLT), Gift cards at checkout (CHK)."
+        },
+        {
+          "type": "load-unassigned",
+          "baseRate": false,
+          "mustLink": [
+            "ll-chk-e11"
+          ],
+          "numbers": {
+            "unassignedOpen": 5,
+            "open": 17
+          },
+          "expect": "5 of 17 open work items in this epic are unassigned."
+        }
+      ],
+      "people": [
+        {
+          "role": "backend",
+          "prefix": "bk",
+          "openTotal": 14,
+          "openInEpic": 6,
+          "doneTotal": 53,
+          "otherEpicsInProgress": [
+            {
+              "externalId": "pf-plt-e03",
+              "summary": "Payment gateway API v3",
+              "space": "PLT"
+            },
+            {
+              "externalId": "em-chk-e12",
+              "summary": "Gift cards at checkout",
+              "space": "CHK"
+            }
+          ]
+        },
+        {
+          "role": "launch-lead",
+          "prefix": "ll",
+          "openTotal": 3,
+          "openInEpic": 1,
+          "doneTotal": 19,
+          "otherEpicsInProgress": [
+            {
+              "externalId": "em-chk-e12",
+              "summary": "Gift cards at checkout",
+              "space": "CHK"
+            }
+          ]
+        },
+        {
+          "role": "qa",
+          "prefix": "qa",
+          "openTotal": 3,
+          "openInEpic": 2,
+          "doneTotal": 13,
+          "otherEpicsInProgress": [
+            {
+              "externalId": "em-chk-e12",
+              "summary": "Gift cards at checkout",
+              "space": "CHK"
+            }
+          ]
+        },
+        {
+          "role": "engineering-manager",
+          "prefix": "em",
+          "openTotal": 2,
+          "openInEpic": 1,
+          "doneTotal": 4,
+          "otherEpicsInProgress": []
+        },
+        {
+          "role": "mobile",
+          "prefix": "mb",
+          "openTotal": 2,
+          "openInEpic": 2,
+          "doneTotal": 47,
+          "otherEpicsInProgress": []
+        }
+      ],
+      "note": "Counts are seeded work items only. On a live site each person also has the open work items they already had (assign-personas.mjs prints them and stops above 5)."
+    }
+  ],
+  "decoys": [
+    {
+      "id": "D1",
+      "name": "Resolved platform blocker",
+      "signal": "dependencies",
+      "externalIds": [
+        "pf-plt-e03-02",
+        "bk-chk-e11-05"
+      ],
+      "mustNotAppear": "Any open-blocker evidence or reason that presents pf-plt-e03-02 \"Gateway v3 client library for internal services\" (resolved) as an open blocker of bk-chk-e11-05."
+    },
+    {
+      "id": "D2",
+      "name": "Busy past, light present",
+      "signal": "load",
+      "role": "mobile",
+      "externalIds": [],
+      "numbers": {
+        "openTotal": 2,
+        "doneTotal": 47
+      },
+      "mustNotAppear": "A load reason about the mobile person, or any count that treats their 47 done work items as open (their open total is 2)."
+    }
+  ],
+  "roles": [
+    {
+      "role": "launch-lead",
+      "prefix": "ll",
+      "title": "Launch lead",
+      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"ll*\"",
+      "queryMatches": 22,
+      "seededWorkItems": 22,
+      "seededOpen": 3,
+      "seededDone": 19
+    },
+    {
+      "role": "backend",
+      "prefix": "bk",
+      "title": "Backend engineer",
+      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"bk*\"",
+      "queryMatches": 67,
+      "seededWorkItems": 67,
+      "seededOpen": 14,
+      "seededDone": 53
+    },
+    {
+      "role": "engineering-manager",
+      "prefix": "em",
+      "title": "Engineering manager",
+      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"em*\"",
+      "queryMatches": 6,
+      "seededWorkItems": 6,
+      "seededOpen": 2,
+      "seededDone": 4
+    },
+    {
+      "role": "mobile",
+      "prefix": "mb",
+      "title": "Mobile and front-end engineer",
+      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"mb*\"",
+      "queryMatches": 49,
+      "seededWorkItems": 49,
+      "seededOpen": 2,
+      "seededDone": 47
+    },
+    {
+      "role": "qa",
+      "prefix": "qa",
+      "title": "QA engineer",
+      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"qa*\"",
+      "queryMatches": 16,
+      "seededWorkItems": 16,
+      "seededOpen": 3,
+      "seededDone": 13
+    },
+    {
+      "role": "platform",
+      "prefix": "pf",
+      "title": "Platform engineer (dependency owner)",
+      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"pf*\"",
+      "queryMatches": 27,
+      "seededWorkItems": 27,
+      "seededOpen": 4,
+      "seededDone": 23
+    }
+  ],
+  "unassigned": {
+    "prefix": "un",
+    "seededWorkItems": 7,
+    "seededOpen": 7
+  },
+  "postStep": {
+    "maxExistingOpenPerPerson": 5
+  },
+  "inventory": [
+    {
+      "id": "chk-work-items",
+      "description": "All CHK work items (fails if the template sample work items are still there or the file was imported twice)",
+      "jql": "project = CHK",
+      "expected": 162
+    },
+    {
+      "id": "plt-work-items",
+      "description": "All PLT work items (same check for PLT)",
+      "jql": "project = PLT",
+      "expected": 32
+    },
+    {
+      "id": "chk-finished-epics",
+      "description": "Finished CHK epics",
+      "jql": "project = CHK AND issuetype = Epic AND statusCategory = Done",
+      "expected": 10
+    },
+    {
+      "id": "chk-finished-epics-no-due-date",
+      "description": "Finished CHK epics without a due date",
+      "jql": "project = CHK AND issuetype = Epic AND statusCategory = Done AND duedate is EMPTY",
+      "expected": 2
+    },
+    {
+      "id": "chk-finished-epics-last-year",
+      "description": "Finished CHK epics resolved in the last 365 days",
+      "jql": "project = CHK AND issuetype = Epic AND statusCategory = Done AND resolved >= -365d",
+      "expected": 10
+    },
+    {
+      "id": "chk-epics-in-progress",
+      "description": "CHK epics in progress",
+      "jql": "project = CHK AND issuetype = Epic AND statusCategory = \"In Progress\"",
+      "expected": 2
+    },
+    {
+      "id": "chk-blocked-work-items",
+      "description": "CHK work items with an \"is blocked by\" link (fails if cross-space Blocks links did not import)",
+      "jql": "project = CHK AND issueLinkType = \"is blocked by\"",
+      "expected": 7
+    },
+    {
+      "id": "plt-blocking-work-items",
+      "description": "PLT work items with a \"blocks\" link",
+      "jql": "project = PLT AND issueLinkType = blocks",
+      "expected": 7
+    },
+    {
+      "id": "plt-open-overdue-unassigned-blocker",
+      "description": "P1: open, unassigned PLT blocker past its due date",
+      "jql": "project = PLT AND issueLinkType = blocks AND statusCategory != Done AND assignee is EMPTY AND duedate < startOfDay()",
+      "expected": 1,
+      "afterPostStep": true
+    },
+    {
+      "id": "chk-versions",
+      "description": "CHK versions (released and unreleased)",
+      "versionsOf": "CHK",
+      "expected": {
+        "released": 5,
+        "unreleased": 1
+      }
+    },
+    {
+      "id": "chk-released-fix-versions",
+      "description": "CHK work items with a released fix version",
+      "jql": "project = CHK AND fixVersion in releasedVersions(CHK)",
+      "expected": 130
+    },
+    {
+      "id": "checkout-v2-children",
+      "description": "Child work items of Checkout v2 launch",
+      "jql": "parent = {{key:ll-chk-e11}}",
+      "expected": 21
+    },
+    {
+      "id": "checkout-v2-open-unassigned",
+      "description": "Open, unassigned child work items of Checkout v2 launch",
+      "jql": "parent = {{key:ll-chk-e11}} AND statusCategory != Done AND assignee is EMPTY",
+      "expected": 5,
+      "afterPostStep": true
+    },
+    {
+      "id": "chk-component-payments",
+      "description": "CHK work items with the component Payments",
+      "jql": "project = CHK AND component = Payments",
+      "expected": 104
+    },
+    {
+      "id": "chk-component-mobile",
+      "description": "CHK work items with the component Mobile",
+      "jql": "project = CHK AND component = Mobile",
+      "expected": 43
+    },
+    {
+      "id": "chk-component-web",
+      "description": "CHK work items with the component Web",
+      "jql": "project = CHK AND component = Web",
+      "expected": 88
+    },
+    {
+      "id": "chk-component-notifications",
+      "description": "CHK work items with the component Notifications",
+      "jql": "project = CHK AND component = Notifications",
+      "expected": 37
+    },
+    {
+      "id": "role-query-launch-lead",
+      "description": "Role query for Launch lead (AC 25)",
+      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"ll*\"",
+      "expected": 22
+    },
+    {
+      "id": "role-query-backend",
+      "description": "Role query for Backend engineer (AC 25)",
+      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"bk*\"",
+      "expected": 67
+    },
+    {
+      "id": "role-query-engineering-manager",
+      "description": "Role query for Engineering manager (AC 25)",
+      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"em*\"",
+      "expected": 6
+    },
+    {
+      "id": "role-query-mobile",
+      "description": "Role query for Mobile and front-end engineer (AC 25)",
+      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"mb*\"",
+      "expected": 49
+    },
+    {
+      "id": "role-query-qa",
+      "description": "Role query for QA engineer (AC 25)",
+      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"qa*\"",
+      "expected": 16
+    },
+    {
+      "id": "role-query-platform",
+      "description": "Role query for Platform engineer (dependency owner) (AC 25)",
+      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"pf*\"",
+      "expected": 27
+    },
+    {
+      "id": "open-launch-lead",
+      "description": "Open seeded work items assigned to the Launch lead",
+      "jql": "project in (CHK, PLT) AND assignee = \"{{accountId:launch-lead}}\" AND statusCategory != Done",
+      "expected": 3,
+      "afterPostStep": true
+    },
+    {
+      "id": "open-backend",
+      "description": "Open seeded work items assigned to the Backend engineer",
+      "jql": "project in (CHK, PLT) AND assignee = \"{{accountId:backend}}\" AND statusCategory != Done",
+      "expected": 14,
+      "afterPostStep": true
+    },
+    {
+      "id": "open-engineering-manager",
+      "description": "Open seeded work items assigned to the Engineering manager",
+      "jql": "project in (CHK, PLT) AND assignee = \"{{accountId:engineering-manager}}\" AND statusCategory != Done",
+      "expected": 2,
+      "afterPostStep": true
+    },
+    {
+      "id": "open-mobile",
+      "description": "Open seeded work items assigned to the Mobile and front-end engineer",
+      "jql": "project in (CHK, PLT) AND assignee = \"{{accountId:mobile}}\" AND statusCategory != Done",
+      "expected": 2,
+      "afterPostStep": true
+    },
+    {
+      "id": "open-qa",
+      "description": "Open seeded work items assigned to the QA engineer",
+      "jql": "project in (CHK, PLT) AND assignee = \"{{accountId:qa}}\" AND statusCategory != Done",
+      "expected": 3,
+      "afterPostStep": true
+    },
+    {
+      "id": "open-platform",
+      "description": "Open seeded work items assigned to the Platform engineer (dependency owner)",
+      "jql": "project in (CHK, PLT) AND assignee = \"{{accountId:platform}}\" AND statusCategory != Done",
+      "expected": 4,
+      "afterPostStep": true
+    },
+    {
+      "id": "chk-description",
+      "description": "CHK space description (AC 29)",
+      "descriptionOf": "CHK",
+      "expected": "Seeded demo history generated by Forewarned's seed script. All dates are relative to the import date."
+    },
+    {
+      "id": "plt-description",
+      "description": "PLT space description (AC 29)",
+      "descriptionOf": "PLT",
+      "expected": "Seeded demo history generated by Forewarned's seed script. All dates are relative to the import date."
+    }
+  ],
+  "externalIdOf": {
+    "checkoutV2": "ll-chk-e11",
+    "walletTopUp": "ll-chk-e07"
+  }
+}

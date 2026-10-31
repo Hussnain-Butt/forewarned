@@ -5,7 +5,10 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "lint": "eslint src/**/*"
+    "lint": "eslint src/**/*",
+    "seed:generate": "node scripts/seed/generate.mjs",
+    "seed:assign": "node scripts/seed/assign-personas.mjs",
+    "seed:test": "node --test \"scripts/seed/test/*.test.mjs\""
   },
   "devDependencies": {
     "eslint": "^8.56.0",
