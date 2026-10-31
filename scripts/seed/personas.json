@@ -6,42 +6,42 @@
       "prefix": "ll",
       "title": "Launch lead",
       "persona": "Ayesha",
-      "displayName": "Alana Grant"
+      "displayName": "Ayesha (demo)"
     },
     {
       "role": "backend",
       "prefix": "bk",
       "title": "Backend engineer",
       "persona": "Bilal",
-      "displayName": "Mitch Davis"
+      "displayName": "Ada Isadora"
     },
     {
       "role": "engineering-manager",
       "prefix": "em",
       "title": "Engineering manager",
       "persona": "Sana",
-      "displayName": "Jennifer Evans"
+      "displayName": "Sana (demo)"
     },
     {
       "role": "mobile",
       "prefix": "mb",
       "title": "Mobile and front-end engineer",
       "persona": "Omar",
-      "displayName": "TODO: pick a demo user"
+      "displayName": "Omar (demo)"
     },
     {
       "role": "qa",
       "prefix": "qa",
       "title": "QA engineer",
       "persona": "Hira",
-      "displayName": "TODO: pick a demo user"
+      "displayName": "Hira (demo)"
     },
     {
       "role": "platform",
       "prefix": "pf",
       "title": "Platform engineer (dependency owner)",
       "persona": "Danish",
-      "displayName": "TODO: pick a demo user"
+      "displayName": "Danish (demo)"
     }
   ]
 }

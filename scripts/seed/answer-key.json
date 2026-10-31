@@ -586,8 +586,8 @@
       "role": "launch-lead",
       "prefix": "ll",
       "title": "Launch lead",
-      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"ll*\"",
-      "queryMatches": 22,
+      "query": "project in (CHK, PLT) AND labels = seed-role-launch-lead",
+      "queryMatches": 11,
       "seededWorkItems": 22,
       "seededOpen": 3,
       "seededDone": 19
@@ -596,7 +596,7 @@
       "role": "backend",
       "prefix": "bk",
       "title": "Backend engineer",
-      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"bk*\"",
+      "query": "project in (CHK, PLT) AND labels = seed-role-backend",
       "queryMatches": 67,
       "seededWorkItems": 67,
       "seededOpen": 14,
@@ -606,8 +606,8 @@
       "role": "engineering-manager",
       "prefix": "em",
       "title": "Engineering manager",
-      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"em*\"",
-      "queryMatches": 6,
+      "query": "project in (CHK, PLT) AND labels = seed-role-engineering-manager",
+      "queryMatches": 5,
       "seededWorkItems": 6,
       "seededOpen": 2,
       "seededDone": 4
@@ -616,7 +616,7 @@
       "role": "mobile",
       "prefix": "mb",
       "title": "Mobile and front-end engineer",
-      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"mb*\"",
+      "query": "project in (CHK, PLT) AND labels = seed-role-mobile",
       "queryMatches": 49,
       "seededWorkItems": 49,
       "seededOpen": 2,
@@ -626,7 +626,7 @@
       "role": "qa",
       "prefix": "qa",
       "title": "QA engineer",
-      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"qa*\"",
+      "query": "project in (CHK, PLT) AND labels = seed-role-qa",
       "queryMatches": 16,
       "seededWorkItems": 16,
       "seededOpen": 3,
@@ -636,8 +636,8 @@
       "role": "platform",
       "prefix": "pf",
       "title": "Platform engineer (dependency owner)",
-      "query": "project in (CHK, PLT) AND \"External issue ID\" ~ \"pf*\"",
-      "queryMatches": 27,
+      "query": "project in (CHK, PLT) AND labels = seed-role-platform",
+      "queryMatches": 24,
       "seededWorkItems": 27,
       "seededOpen": 4,
       "seededDone": 23
@@ -762,38 +762,38 @@
     {
       "id": "role-query-launch-lead",
       "description": "Role query for Launch lead (AC 25)",
-      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"ll*\"",
-      "expected": 22
+      "jql": "project in (CHK, PLT) AND labels = seed-role-launch-lead",
+      "expected": 11
     },
     {
       "id": "role-query-backend",
       "description": "Role query for Backend engineer (AC 25)",
-      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"bk*\"",
+      "jql": "project in (CHK, PLT) AND labels = seed-role-backend",
       "expected": 67
     },
     {
       "id": "role-query-engineering-manager",
       "description": "Role query for Engineering manager (AC 25)",
-      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"em*\"",
-      "expected": 6
+      "jql": "project in (CHK, PLT) AND labels = seed-role-engineering-manager",
+      "expected": 5
     },
     {
       "id": "role-query-mobile",
       "description": "Role query for Mobile and front-end engineer (AC 25)",
-      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"mb*\"",
+      "jql": "project in (CHK, PLT) AND labels = seed-role-mobile",
       "expected": 49
     },
     {
       "id": "role-query-qa",
       "description": "Role query for QA engineer (AC 25)",
-      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"qa*\"",
+      "jql": "project in (CHK, PLT) AND labels = seed-role-qa",
       "expected": 16
     },
     {
       "id": "role-query-platform",
       "description": "Role query for Platform engineer (dependency owner) (AC 25)",
-      "jql": "project in (CHK, PLT) AND \"External issue ID\" ~ \"pf*\"",
-      "expected": 27
+      "jql": "project in (CHK, PLT) AND labels = seed-role-platform",
+      "expected": 24
     },
     {
       "id": "open-launch-lead",

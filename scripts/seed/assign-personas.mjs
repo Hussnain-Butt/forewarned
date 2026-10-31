@@ -2,9 +2,10 @@
 // Post-import step for the Forewarned seed (story 001, AC 20–25).
 //
 // After forewarned-demo.json is imported into CHK and PLT, this script assigns each role's
-// seeded work items to the existing site user named in personas.json, then runs every
-// inventory line of answer-key.json and prints PASS or FAIL per line. It can be run again:
-// work items that already have the right assignee are skipped.
+// seeded work items to the existing site user named in personas.json, adds any role label
+// from the file that the site lacks, then runs every inventory line of answer-key.json and
+// prints PASS or FAIL per line. It can be run again: work items that are already right are
+// skipped.
 //
 // Credentials come only from environment variables set in your own terminal:
 //   JIRA_SITE_URL   for example https://your-site.atlassian.net
@@ -20,7 +21,6 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENV_VARS = ['JIRA_SITE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
-const EXTERNAL_ID_FIELD = 'External issue ID';
 const UNASSIGNED = 'un';
 const PARALLEL_REQUESTS = 5;
 const COUNT_ATTEMPTS = 3; // search counts can lag a few seconds behind assignments
@@ -84,20 +84,32 @@ function jiraClient({ origin, auth }) {
         error.status = res.status;
         throw error;
       }
-      return text ? JSON.parse(text) : null;
+      if (!text) return null;
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new StopError(`${method} ${path.split('?')[0]} returned a response that is not JSON. Check JIRA_SITE_URL.`);
+      }
     }
   };
 }
 
 const countJql = async (jira, jql) => (await jira('POST', '/rest/api/3/search/approximate-count', { jql })).count;
 
+// The first failure stops every worker, so no edits continue after "Stopped" is printed.
 async function runPool(jobs, size) {
   let next = 0;
+  let failed = false;
   const worker = async () => {
-    while (next < jobs.length) {
+    while (!failed && next < jobs.length) {
       const job = jobs[next];
       next += 1;
-      await job();
+      try {
+        await job();
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
     }
   };
   await Promise.all(Array.from({ length: Math.min(size, jobs.length) }, worker));
@@ -116,28 +128,26 @@ async function findUsers(jira, roles) {
   return accountIds;
 }
 
-async function findSeededItems(jira, expectedIds) {
-  const fields = await jira('GET', '/rest/api/3/field');
-  const fieldIds = fields.filter((f) => f.name === EXTERNAL_ID_FIELD).map((f) => f.id);
-  if (!fieldIds.length) {
-    throw new StopError(`This site has no "${EXTERNAL_ID_FIELD}" field. Import forewarned-demo.json with the JSON importer first.`);
-  }
+// Matched by space and summary, which are unique in the seed. The importer also stores each
+// externalId in its "External issue ID" field, but on the demo site the REST API never returns
+// that field (JQL can still search it), so it can't be read here (M1).
+async function findSeededItems(jira, demo) {
+  const idBySummary = new Map(demo.projects.flatMap((p) => p.issues.map((i) => [`${p.key}:${i.summary}`, i.externalId])));
   const found = new Map();
   const duplicates = new Set();
-  let withoutId = 0;
+  let unknown = 0;
   let nextPageToken;
   do {
     const page = await jira('POST', '/rest/api/3/search/jql', {
-      jql: 'project in (CHK, PLT) ORDER BY key ASC', fields: [...fieldIds, 'assignee'], maxResults: 100, nextPageToken,
+      jql: 'project in (CHK, PLT) ORDER BY key ASC', fields: ['summary', 'assignee', 'labels'], maxResults: 100, nextPageToken,
     });
     for (const issue of page.issues) {
-      const value = fieldIds.map((id) => issue.fields[id]).find((v) => v !== undefined && v !== null && v !== '');
-      if (value === undefined) {
-        withoutId += 1;
+      const id = idBySummary.get(`${issue.key.split('-')[0]}:${issue.fields.summary}`);
+      if (id === undefined) {
+        unknown += 1;
       } else {
-        const id = String(value);
         if (found.has(id)) duplicates.add(id);
-        found.set(id, { key: issue.key, accountId: issue.fields.assignee?.accountId ?? null });
+        found.set(id, { key: issue.key, accountId: issue.fields.assignee?.accountId ?? null, labels: issue.fields.labels ?? [] });
       }
     }
     nextPageToken = page.isLast ? undefined : page.nextPageToken;
@@ -146,12 +156,13 @@ async function findSeededItems(jira, expectedIds) {
   if (duplicates.size) {
     throw new StopError(`${duplicates.size} seeded work items exist more than once, so the file was imported twice. Delete and recreate CHK and PLT, then import once.`);
   }
+  const expectedIds = [...idBySummary.values()];
   const missing = expectedIds.filter((id) => !found.has(id));
   if (missing.length) {
-    throw new StopError(`${missing.length} of ${expectedIds.length} seeded work items were not found (for example ${missing.slice(0, 5).join(', ')}). Import forewarned-demo.json first.`);
+    throw new StopError(`${missing.length} of ${expectedIds.length} seeded work items were not found by space and summary (for example ${missing.slice(0, 5).join(', ')}). Import forewarned-demo.json first, and don't rename seeded work items before this step.`);
   }
-  if (withoutId) {
-    console.log(`Note: ${withoutId} work item(s) in CHK and PLT have no ${EXTERNAL_ID_FIELD}, probably the template's sample work items. Delete them; the space totals FAIL until you do.`);
+  if (unknown) {
+    console.log(`Note: ${unknown} work item(s) in CHK and PLT are not in forewarned-demo.json, probably the template's sample work items. Delete them; the space totals FAIL until you do.`);
   }
   return found;
 }
@@ -209,13 +220,16 @@ async function main() {
     throw new StopError(`Nothing assigned. These users have more than ${limit} open work items, which would hide the planted load pattern (P5): ${heavy.join(', ')}. Pick other users in personas.json.`);
   }
 
-  // 2. Seeded work items, found through the importer's "External issue ID" field (AC 23)
+  // 2. Seeded work items, found by space and summary (AC 23)
   const expectedIds = demo.projects.flatMap((p) => p.issues.map((i) => i.externalId));
-  const found = await findSeededItems(jira, expectedIds);
+  const found = await findSeededItems(jira, demo);
 
-  // 3. Assign each role's work items; "un-" work items stay unassigned
+  // 3. Assign each role's work items ("un-" work items stay unassigned), and add role labels
+  // the import file has but the site lacks (the demo site was imported before labels, M1)
   const roleByPrefix = Object.fromEntries(personas.roles.map((r) => [r.prefix, r]));
+  const labelsOf = new Map(demo.projects.flatMap((p) => p.issues.map((i) => [i.externalId, i.labels ?? []])));
   const tally = {};
+  const labelTally = { changed: 0, unchanged: 0 };
   const jobs = [];
   for (const id of expectedIds) {
     const prefix = id.split('-')[0];
@@ -223,12 +237,22 @@ async function main() {
     const target = prefix === UNASSIGNED ? null : accountIds[roleByPrefix[prefix].role];
     const item = found.get(id);
     const t = (tally[prefix] ??= { changed: 0, unchanged: 0 });
+    const edits = [];
     if (item.accountId === target) {
       t.unchanged += 1;
     } else {
       t.changed += 1;
-      jobs.push(() => jira('PUT', `/rest/api/3/issue/${item.key}/assignee`, { accountId: target }));
+      edits.push(() => jira('PUT', `/rest/api/3/issue/${item.key}/assignee`, { accountId: target }));
     }
+    const missingLabels = labelsOf.get(id).filter((label) => !item.labels.includes(label));
+    if (missingLabels.length) {
+      labelTally.changed += 1;
+      edits.push(() => jira('PUT', `/rest/api/3/issue/${item.key}?notifyUsers=false`, { update: { labels: missingLabels.map((add) => ({ add })) } }));
+    } else if (labelsOf.get(id).length) {
+      labelTally.unchanged += 1;
+    }
+    // One job per work item: parallel edits of the same work item can lose an update.
+    if (edits.length) jobs.push(async () => { for (const edit of edits) await edit(); });
   }
   await runPool(jobs, PARALLEL_REQUESTS);
   console.log('\nAssignments:');
@@ -236,6 +260,7 @@ async function main() {
     const who = prefix === UNASSIGNED ? 'Unassigned' : `${roleByPrefix[prefix].title} -> ${roleByPrefix[prefix].displayName}`;
     console.log(`  ${who}: ${t.changed} changed, ${t.unchanged} already right`);
   }
+  console.log(`Role labels on child work items: ${labelTally.changed} changed, ${labelTally.unchanged} already right`);
 
   // 4. Inventory (AC 23, 27)
   const fill = (jql) => jql

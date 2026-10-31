@@ -62,8 +62,8 @@ test('rejects a bad --today value and unknown options', () => {
   }
 });
 
-test('--role-labels puts role labels on child work items only (AC 25 fallback)', () => {
-  const run = generate(['--role-labels']);
+test('role labels go on child work items only (AC 25)', () => {
+  const run = generate([]);
   assert.equal(run.status, 0, run.stderr);
   const demo = readJson(join(run.out, DEMO_FILE));
   const key = readJson(join(run.out, KEY_FILE));

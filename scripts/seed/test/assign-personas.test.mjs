@@ -69,17 +69,22 @@ function runAgainstFake(dir, fakeEnv = {}) {
   });
 }
 
-test('assigns every role, unassigns the un- work items and passes the inventory (AC 23, 27)', () => {
+test('assigns every role, unassigns the un- work items, adds missing role labels and passes the inventory (AC 23, 25, 27)', () => {
   const dir = seedCopyWithUsers();
   const key = readJson(join(SEED_DIR, 'answer-key.json'));
-  // Every work item starts assigned to someone else, as when the default assignee is the space lead.
-  const run = runAgainstFake(dir, { FAKE_START_ASSIGNEE: 'acc-space-lead' });
+  // Every work item starts assigned to someone else, as when the default assignee is the space
+  // lead, and without role labels, as on the demo site imported before labels.
+  const run = runAgainstFake(dir, { FAKE_START_ASSIGNEE: 'acc-space-lead', FAKE_START_LABELS: 'none' });
   assert.equal(run.status, 0, output(run));
   for (const r of key.roles) {
     assert.ok(run.stdout.includes(`${r.title} -> Seed User `), `no assignment line for ${r.role}`);
     assert.ok(run.stdout.includes(`: ${r.seededWorkItems} changed, 0 already right`), `${r.role} count`);
   }
   assert.ok(run.stdout.includes(`Unassigned: ${key.unassigned.seededWorkItems} changed, 0 already right`));
+  const labelled = key.roles.reduce((sum, r) => sum + r.queryMatches, 0);
+  assert.ok(run.stdout.includes(`Role labels on child work items: ${labelled} changed, 0 already right`), 'label count');
+  const assigned = key.roles.reduce((sum, r) => sum + r.seededWorkItems, key.unassigned.seededWorkItems);
+  assert.match(run.stderr, new RegExp(`fake-jira edits: ${assigned + labelled}\\n`));
   assert.equal((run.stdout.match(/^ {2}PASS /gm) ?? []).length, key.inventory.length);
   assert.ok(run.stdout.includes(`All ${key.inventory.length} inventory lines PASS.`));
   for (const secret of [EMAIL, TOKEN, 'acc-']) assert.ok(!output(run).includes(secret), `printed ${secret}`);
@@ -90,7 +95,27 @@ test('a second run changes nothing', () => {
   const run = runAgainstFake(seedCopyWithUsers(), { FAKE_START_ASSIGNEE: 'roles' });
   assert.equal(run.status, 0, output(run));
   assert.doesNotMatch(run.stdout, /: [1-9]\d* changed/);
+  assert.match(run.stderr, /fake-jira edits: 0\n/);
   assert.match(run.stdout, /inventory lines PASS\./);
+});
+
+test('stops before any edit when a seeded work item is missing (AC 23)', () => {
+  const run = runAgainstFake(seedCopyWithUsers(), { FAKE_DROP_FIRST: '1' });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /Stopped: 1 of 194 seeded work items were not found by space and summary/);
+  assert.match(run.stderr, /fake-jira edits: 0\n/);
+  assert.doesNotMatch(run.stdout, /Assignments:/);
+});
+
+test('the first failed edit stops all edits and prints only Jira\'s error message (AC 24)', () => {
+  const run = runAgainstFake(seedCopyWithUsers(), { FAKE_START_LABELS: 'none', FAKE_FAIL_EDIT: 'CHK-3' });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /Stopped: PUT \/rest\/api\/3\/issue\/CHK-3\/assignee failed with HTTP 400: Edit refused\./);
+  assert.ok(!output(run).includes('SENTINEL-RESPONSE-BODY'), 'printed the raw response body');
+  // CHK-3 is the first job; at most the 4 other workers finish the job they already started.
+  const edits = Number(/fake-jira edits: (\d+)/.exec(run.stderr)[1]);
+  assert.ok(edits <= 8, `${edits} edits after the failure`);
+  assert.doesNotMatch(run.stdout, /Assignments:/);
 });
 
 test('stops before assigning when a user already has too much open work (AC 22)', () => {

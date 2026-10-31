@@ -44,7 +44,7 @@ const keysIn = (obj, allowed, where) => {
   for (const k of Object.keys(obj)) assert.ok(allowed.includes(k), `unexpected key "${k}" in ${where}`);
 };
 
-test('uses only the import keys proven in M0c (AC 6)', () => {
+test('uses only import keys proven on a real import (AC 6)', () => {
   keysIn(demo, ALLOWED_KEYS.root, 'the file');
   for (const p of demo.projects) {
     keysIn(p, ALLOWED_KEYS.project, p.key);
@@ -64,7 +64,8 @@ test('names no users anywhere (AC 7)', () => {
   const names = personas.roles.flatMap((r) => [r.persona, ...(r.displayName.startsWith('TODO') ? [] : [r.displayName, r.displayName.split(' ')[0]])]);
   const text = readFileSync(join(SEED_DIR, DEMO_FILE), 'utf8');
   for (const k of USER_KEYS) assert.ok(!text.includes(`"${k}":`), `user key "${k}" found`);
-  for (const n of names) assert.doesNotMatch(text, new RegExp(`\\b${n}\\b`, 'i'), `person name "${n}" found`);
+  const exactly = (n) => new RegExp(`(?<!\\w)${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\w)`, 'i');
+  for (const n of names) assert.doesNotMatch(text, exactly(n), `person name "${n}" found`);
 });
 
 test('work item types, statuses, resolutions and history are valid', () => {
@@ -90,9 +91,13 @@ test('work item types, statuses, resolutions and history are valid', () => {
   }
 });
 
-test('external IDs are unique and every link points at existing work items', () => {
+test('external IDs and summaries are unique and every link points at existing work items', () => {
   const ids = demo.projects.flatMap((p) => p.issues.map((i) => i.externalId));
   assert.equal(new Set(ids).size, ids.length);
+  for (const p of demo.projects) {
+    const summaries = p.issues.map((i) => i.summary);
+    assert.equal(new Set(summaries).size, summaries.length, `${p.key} repeats a summary; the post-step matches by summary`);
+  }
   const parents = new Map();
   for (const l of demo.links) {
     assert.ok(seed.has(l.sourceId), `unknown link source ${l.sourceId}`);
@@ -336,7 +341,7 @@ test('inventory counts match the import file (AC 19)', () => {
   }
   for (const r of key.roles) {
     assert.equal(line(`open-${r.role}`), openTotal(r.prefix));
-    assert.equal(line(`role-query-${r.role}`), all.filter((x) => x.role === r.prefix).length);
+    assert.equal(line(`role-query-${r.role}`), all.filter((x) => x.labels.includes(`seed-role-${r.role}`)).length);
   }
   assert.deepEqual(line('chk-versions'), { released: 5, unreleased: 1 });
 });
@@ -350,13 +355,7 @@ test('roles: personas.json holds names only, and every work item has a role pref
   const prefixes = personas.roles.map((r) => r.prefix);
   assert.equal(new Set(prefixes).size, 6);
   for (const r of all) assert.ok([...prefixes, 'un'].includes(r.role), `${r.id} has no known role prefix`);
-  for (const r of key.roles) assert.equal(r.query, `project in (CHK, PLT) AND "External issue ID" ~ "${r.prefix}*"`);
-  // A prefix search must not match other parts of an ID.
-  for (const r of all) {
-    for (const token of r.id.split('-').slice(1)) {
-      assert.ok(![...prefixes, 'un'].some((p) => token.startsWith(p)), `${r.id}: "${token}" starts with a role prefix`);
-    }
-  }
+  for (const r of key.roles) assert.equal(r.query, `project in (CHK, PLT) AND labels = seed-role-${r.role}`);
 });
 
 test('summaries read like real team work (AC 28)', () => {
