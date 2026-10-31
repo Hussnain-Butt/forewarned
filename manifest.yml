@@ -25,11 +25,15 @@ modules:
         5. Tell the user how many reasons were saved and which were dropped, and that the saved pre-mortem appears in the Forewarned panel on the epic.
 
         If the evidence is too thin for a reason, say so instead of guessing.
+
+        When the user asks what the saved pre-mortem says, call the get-premortem action and report the saved reasons with their evidence IDs instead of writing new ones.
       conversationStarters:
         - Run a pre-mortem on this epic
+        - What does the saved pre-mortem say?
       actions:
         - get-evidence
         - submit-premortem
+        - get-premortem
   action:
     - key: get-evidence
       name: Get pre-mortem evidence
@@ -60,6 +64,18 @@ modules:
           type: string
           required: true
           description: 'A JSON array of 2 to 5 reasons, each with "title", "explanation" and "evidenceIds" (IDs from get-evidence).'
+    - key: get-premortem
+      name: Get saved pre-mortem
+      function: get-premortem-fn
+      actionVerb: GET
+      description: |
+        Gets the pre-mortem saved on a Jira epic: its reasons, their evidence IDs and when it was saved. Use it when the user asks what the saved pre-mortem says.
+      inputs:
+        epicKey:
+          title: Epic key
+          type: string
+          required: true
+          description: The key of the Jira epic, for example PLAT-1.
   function:
     - key: resolver
       handler: index.handler
@@ -67,6 +83,8 @@ modules:
       handler: actions/index.getEvidence
     - key: submit-premortem-fn
       handler: actions/index.submitPremortem
+    - key: get-premortem-fn
+      handler: actions/index.getPremortem
 resources:
   - key: main
     path: src/frontend/index.jsx

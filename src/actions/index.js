@@ -85,6 +85,30 @@ export async function getEvidence(payload) {
   }
 }
 
+// Spike M0e: an action reads the report back from the epic's entity property.
+export async function getPremortem(payload) {
+  const epicKey = resolveEpicKey(payload);
+  if (!epicKey) {
+    return { error: 'No valid epic key was given. Ask the user which epic to use, for example PLAT-1.' };
+  }
+  try {
+    const response = await api
+      .asUser()
+      .requestJira(route`/rest/api/3/issue/${epicKey}/properties/${PREMORTEM_PROPERTY}`);
+    if (response.status === 404) {
+      return { epicKey, report: null, message: `No pre-mortem has been saved on ${epicKey} yet.` };
+    }
+    if (!response.ok) {
+      throw new Error(`Reading the pre-mortem on ${epicKey} failed: ${response.status}`);
+    }
+    const { value } = await response.json();
+    return { epicKey, report: value };
+  } catch (error) {
+    console.error('getPremortem failed:', errorMessage(error));
+    return { error: errorMessage(error) };
+  }
+}
+
 export async function submitPremortem(payload) {
   const epicKey = resolveEpicKey(payload);
   if (!epicKey) {

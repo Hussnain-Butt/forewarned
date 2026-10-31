@@ -14,6 +14,36 @@ const Reason = ({ reason }) => (
   </Stack>
 );
 
+// Spike M0f (temporary): runs the entity property size check and shows each result.
+const SizeCheck = () => {
+  const [check, setCheck] = useState(null);
+  const run = () => {
+    setCheck({ running: true });
+    invoke('checkPropertySize')
+      .then(setCheck)
+      .catch(() => setCheck({ error: "The size check couldn't run." }));
+  };
+  return (
+    <Stack space="space.100">
+      <Button onClick={run} isDisabled={check?.running}>
+        Run storage size check (spike M0f)
+      </Button>
+      {check?.running ? <Spinner label="Running the size check" /> : null}
+      {check?.error ? <Text color="color.text.danger">{check.error}</Text> : null}
+      {(check?.results ?? []).map((result) => (
+        <Text key={result.bytes} size="small">
+          {result.bytes} bytes:{' '}
+          {result.saved
+            ? `saved in ${result.writeMs} ms, read back in ${result.readMs} ms, ${
+                result.sameOnReadBack ? 'identical' : 'DIFFERENT'
+              }`
+            : `rejected (status ${result.status})`}
+        </Text>
+      ))}
+    </Stack>
+  );
+};
+
 const App = () => {
   const [state, setState] = useState({ loading: true });
   const [rovoEnabled, setRovoEnabled] = useState(false);
@@ -71,6 +101,7 @@ const App = () => {
         ) : null}
         <Button onClick={load}>Refresh</Button>
       </Inline>
+      <SizeCheck />
     </Stack>
   );
 };
