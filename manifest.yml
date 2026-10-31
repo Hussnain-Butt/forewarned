@@ -69,7 +69,7 @@ modules:
       function: get-premortem-fn
       actionVerb: GET
       description: |
-        Gets the pre-mortem saved on a Jira epic: its reasons, their evidence IDs and when it was saved. Use it when the user asks what the saved pre-mortem says.
+        Gets the pre-mortem that Forewarned saved on a Jira epic: its reasons, their evidence IDs and when it was saved. Use it when the user asks what the saved pre-mortem says. It doesn't search Confluence pages.
       inputs:
         epicKey:
           title: Epic key
