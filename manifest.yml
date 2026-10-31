@@ -7,6 +7,8 @@ modules:
       render: native
       title: forewarned
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      displayConditions:
+        jiraExpression: 'issue.issueType.hierarchyLevel == 1'
   function:
     - key: resolver
       handler: index.handler
