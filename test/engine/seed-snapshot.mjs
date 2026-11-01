@@ -4,6 +4,7 @@
 import { join } from 'node:path';
 import { DEMO_FILE, KEY_FILE, SEED_DIR, loadSeed, readJson } from '../../scripts/seed/test/helpers.mjs';
 import { compareKeys, dayOf } from '../../src/engine/format.js';
+import { rankPeople } from '../../src/engine/load.js';
 
 export const SEED_TODAY = '2026-11-02';
 export const SEED_SITE = 'https://seed.example.atlassian.net';
@@ -19,21 +20,6 @@ export const keyOf = (externalId) => keys.get(externalId);
 const CATEGORY = { 'To Do': 'new', 'In Progress': 'indeterminate', Done: 'done' };
 const PERSON = Object.fromEntries(personas.roles.map((r) => [r.prefix, { accountId: `acc-${r.role}`, displayName: r.displayName }]));
 export const personOf = (record) => PERSON[record.role] ?? null;
-
-// Until rankPeople exists (Task 6): epic assignee plus open-child assignees, most open in this epic first.
-function rankPeople(epicRecord, openKids) {
-  const byId = new Map();
-  const add = (person, n) => {
-    if (!person) return;
-    const entry = byId.get(person.accountId) ?? { person, openInEpic: 0 };
-    entry.openInEpic += n;
-    byId.set(person.accountId, entry);
-  };
-  add(personOf(epicRecord), 0);
-  for (const kid of openKids) add(personOf(kid), 1);
-  return [...byId.values()].sort((a, b) => b.openInEpic - a.openInEpic
-    || a.person.displayName.localeCompare(b.person.displayName) || a.person.accountId.localeCompare(b.person.accountId));
-}
 
 export function seedSnapshot({ epic = 'll-chk-e11', today = SEED_TODAY, edit } = {}) {
   const records = loadSeed(demo);
@@ -68,7 +54,8 @@ export function seedSnapshot({ epic = 'll-chk-e11', today = SEED_TODAY, edit } =
 
   const current = records.get(epic);
   const openKids = childrenOf(current.id).filter(isOpen);
-  const people = rankPeople(current, openKids).slice(0, 25).map(({ person }, i) => {
+  const read = openKids.map((k) => ({ key: keyOf(k.id), summary: k.summary, assignee: personOf(k) }));
+  const people = rankPeople({ assignee: personOf(current), openChildren: { read } }).slice(0, 25).map(({ person }, i) => {
     const mine = all.filter((r) => isOpen(r) && personOf(r)?.accountId === person.accountId);
     const otherEpics = [...new Set(mine.map((r) => r.parent).filter(Boolean))]
       .map((id) => records.get(id))
@@ -113,7 +100,7 @@ export function seedSnapshot({ epic = 'll-chk-e11', today = SEED_TODAY, edit } =
       openChildren: {
         total: openKids.length,
         unassignedTotal: openKids.filter((k) => !personOf(k)).length,
-        read: openKids.map((k) => ({ key: keyOf(k.id), summary: k.summary, assignee: personOf(k) })),
+        read,
       },
       people,
       blocked: epicBlocked,
