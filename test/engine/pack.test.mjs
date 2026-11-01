@@ -102,3 +102,10 @@ test('AC 30: an oversized pack drops its weakest items until it fits, and says s
   assert.ok(pack.evidence.some((e) => e.signal === 'slip') && pack.evidence.some((e) => e.signal === 'dependencies'));
   assert.match(pack.notes.at(-1), /^Dropped \d+ weaker evidence items to keep the pack within 25 items and 24,000 bytes\.$/);
 });
+
+test('the packId does not depend on who built the pack (AC 31)', () => {
+  const a = computePack(seedSnapshot());
+  const b = computePack({ ...seedSnapshot(), builtFor: 'acc-someone-else' });
+  assert.equal(b.packId, a.packId);
+  assert.equal(b.builtFor, 'acc-someone-else');
+});

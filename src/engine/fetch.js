@@ -7,7 +7,8 @@
 // items from spaces that user can browse (AC 2).
 
 import { selectComparable } from './comparable.js';
-import { compareKeys, dayOf, isoDay } from './format.js';
+import { compareKeys, dayOf } from './format.js';
+import { JiraError } from './jira.js';
 import { rankPeople } from './load.js';
 
 const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
@@ -23,6 +24,7 @@ const MAX_PEOPLE_COUNTED = 25;
 const MAX_PEOPLE_READ = 10; // whose other epics are read (AC 19)
 const MAX_PERSON_PAGES = 2; // 200 open work items per person (AC 19)
 const MAX_CHANGELOG_PAGES = 5;
+const DAY_MS = 86400000;
 
 const EPIC_FIELDS = ['summary', 'status', 'issuetype', 'project', 'duedate', 'created', 'resolutiondate', 'components', 'labels', 'assignee'];
 const BLOCKER_FIELDS = ['summary', 'status', 'assignee', 'duedate', 'resolutiondate', 'project'];
@@ -68,8 +70,20 @@ async function searchPages(port, body, maxPages) {
 
 const count = async (port, jql) => (await port.count(jql)).count;
 
-// Status changes per issue ID, oldest first, as { day, category }.
-async function statusMoves(port, issueIds, categoryOf) {
+// Reads work items by key in batches of 100. Keys the user can't see are simply not returned.
+async function readVisible(port, keys, fields) {
+  const chunks = [];
+  for (let i = 0; i < keys.length; i += PAGE) chunks.push(keys.slice(i, i + PAGE));
+  const pages = await mapLimit(chunks, (chunk) => port.bulkIssues({ issueIdsOrKeys: chunk, fields }));
+  return pages.flatMap((p) => p.issues ?? []);
+}
+
+// Status changes per issue ID, oldest first, as { day, category }. A history item names its new
+// status by ID; imported history may carry only the name, so the name is the fallback.
+async function statusMoves(port, issueIds, statuses) {
+  const byId = new Map(statuses.map((s) => [String(s.id), s.statusCategory?.key]));
+  const byName = new Map(statuses.map((s) => [String(s.name ?? '').toLowerCase(), s.statusCategory?.key]));
+  const categoryOf = (item) => byId.get(String(item.to)) ?? byName.get(String(item.toString ?? '').toLowerCase());
   const moves = new Map();
   let nextPageToken;
   for (let pageNo = 0; pageNo < MAX_CHANGELOG_PAGES; pageNo += 1) {
@@ -77,8 +91,9 @@ async function statusMoves(port, issueIds, categoryOf) {
     for (const log of page.issueChangeLogs ?? []) {
       const list = moves.get(log.issueId) ?? [];
       for (const history of log.changeHistories ?? []) {
+        const day = dayOf(history.created);
         for (const item of history.items ?? []) {
-          if ((item.fieldId ?? item.field) === 'status') list.push({ day: dayOf(history.created), category: categoryOf.get(String(item.to)) });
+          if ((item.fieldId ?? item.field) === 'status' && day !== null) list.push({ day, category: categoryOf(item) });
         }
       }
       moves.set(log.issueId, list.sort((a, b) => a.day - b.day));
@@ -90,19 +105,16 @@ async function statusMoves(port, issueIds, categoryOf) {
 }
 
 // One epic as compute needs it. Start: first move into an In Progress category status, else the
-// created day (AC 9). Finish: the resolution date, else the last move into Done (AC 8).
-function toEpic(issue, moves) {
+// created day (AC 9). Finish: the resolution date, else the last move into Done (AC 8). A missing
+// or unreadable created date falls back to today (AC 28).
+function toEpic(issue, moves, today) {
   const f = issue.fields;
   const own = moves.get(issue.id) ?? [];
-  const created = dayOf(f.created);
+  const created = dayOf(f.created) ?? today;
   const statusCategory = f.status?.statusCategory?.key ?? 'new';
   const started = own.find((m) => m.category === 'indeterminate');
   const doneMoves = own.filter((m) => m.category === 'done');
-  let finish = null;
-  if (statusCategory === 'done') {
-    if (f.resolutiondate) finish = dayOf(f.resolutiondate);
-    else if (doneMoves.length) finish = doneMoves.at(-1).day;
-  }
+  const finish = statusCategory === 'done' ? dayOf(f.resolutiondate) ?? (doneMoves.length ? doneMoves.at(-1).day : null) : null;
   return {
     key: issue.key,
     summary: f.summary ?? '',
@@ -110,7 +122,7 @@ function toEpic(issue, moves) {
     statusCategory,
     created,
     start: started ? started.day : created,
-    due: f.duedate ? dayOf(f.duedate) : null,
+    due: dayOf(f.duedate),
     finish,
     components: (f.components ?? []).map((c) => c.name),
     labels: f.labels ?? [],
@@ -127,32 +139,37 @@ const blockedList = (issues) => issues
   .map((i) => ({ key: i.key, summary: i.fields.summary ?? '', blockerKeys: blockerKeysOf(i) }))
   .filter((b) => b.blockerKeys.length);
 
-// Children in total and children created on or before the start day (AC 16).
-async function childCounts(port, epic) {
-  const [childCount, childCountAtStart] = await Promise.all([
-    count(port, `parent = ${quote(epic.key)}`),
-    count(port, `parent = ${quote(epic.key)} AND created < ${quote(isoDay(epic.start + 1))}`),
-  ]);
+// Children in total and children created on or before the start day (AC 16). The engine counts
+// UTC days, but JQL reads a date like "2026-10-20" in the user's time zone, so the bound (midnight
+// UTC after the start day) is sent as "created more than N minutes ago", which has no time zone.
+async function childCounts(port, epic, now) {
+  const minutesAgo = Math.ceil((now - (epic.start + 1) * DAY_MS) / 60000);
+  const total = count(port, `parent = ${quote(epic.key)}`);
+  if (minutesAgo <= 0) return { childCount: await total, childCountAtStart: await total }; // started today
+  const [childCount, childCountAtStart] = await Promise.all([total, count(port, `parent = ${quote(epic.key)} AND created < "-${minutesAgo}m"`)]);
   return { childCount, childCountAtStart };
 }
 
-// Reads the Snapshot for one epic, or returns { error } with a message for the user.
-export async function fetchSnapshot(port, epicKey, { today, accountId }) {
-  if (!ISSUE_KEY.test(epicKey)) return { error: 'No valid epic key was given.' };
+// Reads the Snapshot for one epic, or returns { error } with a message for the user. `now` is the
+// run's start time in milliseconds; `today` is its UTC day number.
+export async function fetchSnapshot(port, requestedKey, { today, now, accountId }) {
+  if (!ISSUE_KEY.test(requestedKey)) return { error: 'No valid epic key was given.' };
 
   // Phase 1: site, statuses, link types and the epic itself (AC 1).
   const [server, statuses, linkTypes] = await Promise.all([port.serverInfo(), port.statuses(), port.linkTypes()]);
   let issue;
   try {
-    issue = await port.issue(epicKey, EPIC_FIELDS);
+    issue = await port.issue(requestedKey, EPIC_FIELDS);
   } catch (error) {
-    if (error.status === 404) return { error: `${epicKey} doesn't exist, or you don't have permission to see it.` };
+    if (error.status === 404) return { error: `${requestedKey} doesn't exist, or you don't have permission to see it.` };
     throw error;
   }
+  // Jira follows a moved epic's old key; from here on only its current key is used.
+  const epicKey = issue.key;
+  if (!ISSUE_KEY.test(epicKey ?? '')) return { error: 'No valid epic key was given.' };
   if (issue.fields.issuetype?.hierarchyLevel !== 1) return { error: `${epicKey} is not an epic. Forewarned runs pre-mortems on epics only.` };
   const space = issue.fields.project?.key;
   if (!SPACE_KEY.test(space ?? '')) return { error: `${epicKey} is in a space Forewarned can't read.` };
-  const categoryOf = new Map(statuses.map((s) => [String(s.id), s.statusCategory?.key]));
   const linkTypeFound = (linkTypes.issueLinkTypes ?? []).some((t) => t.inward === BLOCKED_BY);
 
   // Phase 2: finished epics of the same space and the status history they need.
@@ -165,17 +182,18 @@ export async function fetchSnapshot(port, epicKey, { today, accountId }) {
       maxResults: MAX_CANDIDATES,
     })).issues
     : [];
-  const moves = await statusMoves(port, [issue, ...candidateIssues].map((i) => i.id), categoryOf);
-  const epic = toEpic(issue, moves);
-  const candidates = candidateIssues.map((i) => toEpic(i, moves));
+  const moves = await statusMoves(port, [issue, ...candidateIssues].map((i) => i.id), statuses);
+  const epic = toEpic(issue, moves, today);
+  const candidates = candidateIssues.map((i) => toEpic(i, moves, today));
 
-  // Phase 3: details of the comparable epics only.
+  // Phase 3: details of the comparable epics only. comparison.epics holds the same objects as
+  // candidates, so the details attached here become part of the Snapshot's candidates.
   const comparison = selectComparable(epic, candidates, today);
-  await mapLimit(comparison.epics, async (e) => { e.details = { ...(await childCounts(port, e)), blocked: [] }; });
+  await mapLimit(comparison.epics, async (e) => { e.details = { ...(await childCounts(port, e, now)), blocked: [] }; });
   const comparableKeys = comparison.epics.map((e) => e.key).filter((k) => ISSUE_KEY.test(k));
   if (linkTypeFound && comparableKeys.length) {
     const blockedChildren = await searchPages(port, {
-      jql: `parent in (${comparableKeys.map(quote).join(', ')}) AND issueLinkType = ${quote(BLOCKED_BY)}`,
+      jql: `parent in (${comparableKeys.map(quote).join(', ')}) AND issueLinkType = ${quote(BLOCKED_BY)} ORDER BY key ASC`,
       fields: ['summary', 'parent', 'issuelinks'],
       maxResults: PAGE,
     }, 1);
@@ -185,7 +203,7 @@ export async function fetchSnapshot(port, epicKey, { today, accountId }) {
   // Phase 4: the current epic's children, open work and blockers (AC 16, 18, 20, 23).
   const open = `parent = ${quote(epicKey)} AND statusCategory != Done`;
   const [counts, openTotal, unassignedTotal, openIssues, blockedIssues] = await Promise.all([
-    childCounts(port, epic),
+    childCounts(port, epic, now),
     count(port, open),
     count(port, `${open} AND assignee is EMPTY`),
     searchPages(port, { jql: `${open} ORDER BY key ASC`, fields: ['summary', 'assignee'], maxResults: PAGE }, MAX_CHILD_PAGES),
@@ -196,13 +214,20 @@ export async function fetchSnapshot(port, epicKey, { today, accountId }) {
   const read = openIssues.map((i) => ({ key: i.key, summary: i.fields.summary ?? '', assignee: person(i.fields.assignee) }));
   const blocked = blockedList(blockedIssues);
 
-  // Phase 5: everyone's total open work, and the other epics of the busiest 10 (AC 19).
+  // Phase 5: everyone's total open work, and the other epics of the busiest 10 (AC 19). A person
+  // Jira can't count (for example an erased account) is skipped, not the whole run.
   const ranked = rankPeople({ assignee: epic.assignee, openChildren: { read } })
     .filter((r) => ACCOUNT_ID.test(r.person.accountId))
     .slice(0, MAX_PEOPLE_COUNTED);
-  const people = await mapLimit(ranked, async ({ person: who }, i) => {
+  const counted = await mapLimit(ranked, async ({ person: who }, i) => {
     const theirs = `assignee = ${quote(who.accountId)} AND statusCategory != Done`;
-    const total = await count(port, theirs);
+    let total;
+    try {
+      total = await count(port, theirs);
+    } catch (error) {
+      if (error instanceof JiraError && error.status === 400) return null;
+      throw error;
+    }
     if (i >= MAX_PEOPLE_READ) return { person: who, openTotal: total, otherEpics: null };
     const items = await searchPages(port, { jql: `${theirs} AND parent is not EMPTY ORDER BY key ASC`, fields: ['parent'], maxResults: PAGE }, MAX_PERSON_PAGES);
     const others = new Map();
@@ -214,37 +239,30 @@ export async function fetchSnapshot(port, epicKey, { today, accountId }) {
     }
     return { person: who, openTotal: total, otherEpics: [...others.values()].sort((a, b) => compareKeys(a.key, b.key)) };
   });
+  // The parent field can name an epic in a space the user can't browse; only visible ones stay (AC 2).
+  const otherKeys = [...new Set(counted.flatMap((p) => p?.otherEpics ?? []).map((e) => e.key))].sort(compareKeys);
+  const visibleEpics = new Set((await readVisible(port, otherKeys, ['summary'])).map((i) => i.key));
+  const people = counted.filter(Boolean)
+    .map((p) => (p.otherEpics ? { ...p, otherEpics: p.otherEpics.filter((e) => visibleEpics.has(e.key)) } : p));
 
-  // Phase 6: details of every blocker. A blocker that doesn't come back is one the user can't see.
+  // Phase 6: details of every blocker, read again as the user. A blocker that doesn't come back is
+  // one the user can't see: it is left out, and the pack says so.
   const blockerKeys = [...new Set([...blocked, ...comparison.epics.flatMap((e) => e.details.blocked)].flatMap((b) => b.blockerKeys))].sort(compareKeys);
-  const chunks = [];
-  for (let i = 0; i < blockerKeys.length; i += PAGE) chunks.push(blockerKeys.slice(i, i + PAGE));
   const blockers = {};
-  let hidden = false;
-  await mapLimit(chunks, async (chunk) => {
-    let issues;
-    try {
-      issues = await searchPages(port, { jql: `key in (${chunk.map(quote).join(', ')})`, fields: BLOCKER_FIELDS, maxResults: PAGE }, 1);
-    } catch (error) {
-      if (error.status !== 400) throw error;
-      hidden = true;
-      return;
-    }
-    if (issues.length < chunk.length) hidden = true;
-    for (const b of issues) {
-      const f = b.fields;
-      blockers[b.key] = {
-        key: b.key,
-        summary: f.summary ?? '',
-        space: f.project?.key ?? b.key.split('-')[0],
-        statusCategory: f.status?.statusCategory?.key ?? 'new',
-        statusName: f.status?.name ?? 'Unknown status',
-        assignee: person(f.assignee),
-        due: f.duedate ? dayOf(f.duedate) : null,
-        resolved: f.resolutiondate ? dayOf(f.resolutiondate) : null,
-      };
-    }
-  });
+  for (const b of await readVisible(port, blockerKeys, BLOCKER_FIELDS)) {
+    const f = b.fields;
+    blockers[b.key] = {
+      key: b.key,
+      summary: f.summary ?? '',
+      space: f.project?.key ?? b.key.split('-')[0],
+      statusCategory: f.status?.statusCategory?.key ?? 'new',
+      statusName: f.status?.name ?? 'Unknown status',
+      assignee: person(f.assignee),
+      due: dayOf(f.duedate),
+      resolved: dayOf(f.resolutiondate),
+    };
+  }
+  const hidden = blockerKeys.some((k) => !blockers[k]);
 
   return {
     snapshot: {

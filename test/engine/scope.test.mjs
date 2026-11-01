@@ -51,3 +51,8 @@ test('fewer than 3 comparable epics: no scope base rate', () => {
   assert.deepEqual(drafts.map((d) => d.type), ['scope-current']);
   assert.match(check.note, /Fewer than 3 comparable epics had work items at their start, so there is no scope base rate\./);
 });
+
+test('counts of 1,000 or more get commas (AC 27)', () => {
+  assert.equal(run(withEpic({ childCount: 5121, childCountAtStart: 4000 })).drafts[0].fact,
+    `${KEY} started on 19 Oct 2026 with 4,000 work items and has gained 1,121 since, 28% more; it now has 5,121.`);
+});

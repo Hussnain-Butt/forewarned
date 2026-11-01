@@ -1,7 +1,8 @@
 // Forge senders for the evidence engine's Jira port (jira.js). This is the only engine file that
-// imports @forge/api. Every path is built with `route`, which encodes interpolated values, and
-// every call runs as the requesting user (`asUser()`), so Jira applies that user's permissions and
-// returns only work items from spaces they can browse (story 002 AC 2).
+// imports @forge/api. Every path is built with `route`, which rejects path tricks in interpolated
+// path segments and encodes interpolated query values, and every call runs as the requesting user
+// (`asUser()`), so Jira applies that user's permissions and returns only work items from spaces
+// they can browse (story 002 AC 2).
 
 import api, { route } from '@forge/api';
 
@@ -23,5 +24,6 @@ export function forgeSenders() {
     search: (body) => jira.requestJira(route`/rest/api/3/search/jql`, post(body)),
     count: (jql) => jira.requestJira(route`/rest/api/3/search/approximate-count`, post({ jql })),
     changelogs: (body) => jira.requestJira(route`/rest/api/3/changelog/bulkfetch`, post(body)),
+    bulkIssues: (body) => jira.requestJira(route`/rest/api/3/issue/bulkfetch`, post(body)),
   };
 }

@@ -42,3 +42,8 @@ test('a 404 becomes a JiraError with its status', async () => {
   const port = createJira({ issue: reply(404, { errorMessages: ['Issue does not exist'] }) }, { deadline: Infinity });
   await assert.rejects(port.issue('CHK-1', ['summary']), (e) => e instanceof JiraError && e.status === 404);
 });
+
+test('a 200 that is not JSON fails without quoting the body', async () => {
+  const port = createJira({ serverInfo: async () => new Response('<html>SENTINEL body</html>', { status: 200 }) }, { deadline: Infinity });
+  await assert.rejects(port.serverInfo(), (e) => e instanceof JiraError && !e.message.includes('SENTINEL'));
+});

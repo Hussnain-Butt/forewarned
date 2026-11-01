@@ -76,7 +76,9 @@ export function computePack(snapshot) {
     pack = build(dropped);
   }
 
-  // The packId is a hash of everything in the pack, so any change in the data changes it.
-  pack.packId = createHash('sha256').update(JSON.stringify(pack)).digest('hex').slice(0, 16);
+  // The packId is a hash of the pack's content, so any change in the data changes it. Who built it
+  // is left out: teammates looking at the same data get the same packId (AC 31).
+  const { builtFor, ...content } = pack;
+  pack.packId = createHash('sha256').update(JSON.stringify(content)).digest('hex').slice(0, 16);
   return pack;
 }

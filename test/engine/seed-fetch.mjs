@@ -19,6 +19,7 @@ globalThis.fetch = async (url, init = {}) => {
     case '/rest/api/3/search/jql': return senders.search(body);
     case '/rest/api/3/search/approximate-count': return senders.count(body.jql);
     case '/rest/api/3/changelog/bulkfetch': return senders.changelogs(body);
+    case '/rest/api/3/issue/bulkfetch': return senders.bulkIssues(body);
     default: {
       const issue = /^\/rest\/api\/3\/issue\/([^/]+)$/.exec(pathname);
       return issue ? senders.issue(decodeURIComponent(issue[1]), searchParams.get('fields').split(',')) : notFaked(pathname);

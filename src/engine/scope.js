@@ -4,7 +4,7 @@
 // Children "at the start" are those created on or before the epic's start day; the importer stamps
 // parent links with the import date (M0c), so parent changes are never read.
 
-import { formatDay, percent, roundedMedian } from './format.js';
+import { formatCount, formatDay, percent, roundedMedian } from './format.js';
 
 const MIN_EPICS = 3;
 const MAX_LINKS = 10;
@@ -19,12 +19,13 @@ export function scopeSignal(snapshot, comparison) {
 
   const a = epic.childCountAtStart;
   const t = epic.childCount;
-  const started = `${epic.key} started on ${formatDay(epic.start)} with ${a} work items`;
+  const n = formatCount;
+  const started = `${epic.key} started on ${formatDay(epic.start)} with ${n(a)} work items`;
   let fact = null;
   if (t === 0) notes.push(`${epic.key} has no child work items yet.`);
-  else if (t < a) fact = `${started} and now has ${t}, ${a - t} fewer.`;
-  else if (a === 0) fact = `${started} and has gained ${t} since; it now has ${t}.`;
-  else fact = `${started} and has gained ${t - a} since, ${percent(t - a, a)}% more; it now has ${t}.`;
+  else if (t < a) fact = `${started} and now has ${n(t)}, ${n(a - t)} fewer.`;
+  else if (a === 0) fact = `${started} and has gained ${n(t)} since; it now has ${n(t)}.`;
+  else fact = `${started} and has gained ${n(t - a)} since, ${percent(t - a, a)}% more; it now has ${n(t)}.`;
   if (fact) {
     drafts.push(draft('scope-current', fact, [{ key: epic.key, summary: epic.summary }], false, {
       atStart: a,

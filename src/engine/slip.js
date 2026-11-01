@@ -32,7 +32,8 @@ export function slipSignal(snapshot, comparison) {
       let fact = `${share}.`;
       if (late.length === 1) fact = `${share}, by ${days[0]} days.`;
       if (late.length > 1) fact = `${share}, by a median of ${roundedMedian(days)} days (from ${Math.min(...days)} to ${Math.max(...days)} days).`;
-      drafts.push(draft('slip-base-rate', fact, late.slice(0, MAX_LINKS).map(link), true, {
+      // Links the late epics, or the epics it counted when none was late (AC 26).
+      drafts.push(draft('slip-base-rate', fact, (late.length ? late : withDue).slice(0, MAX_LINKS).map(link), true, {
         late: late.length,
         withDueDate: m,
         onTime: m - late.length,
@@ -44,7 +45,9 @@ export function slipSignal(snapshot, comparison) {
     }
 
     // AC 14: the plan (start to due) against how long comparable epics took.
-    if (epic.due !== null) {
+    if (epic.due !== null && epic.due <= epic.start) {
+      notes.push(`${epic.key}'s due date is not after its start, so its plan can't be compared with history.`);
+    } else if (epic.due !== null) {
       const p = epic.due - epic.start;
       const n = epics.length;
       const k = epics.filter((e) => e.duration > p).length;

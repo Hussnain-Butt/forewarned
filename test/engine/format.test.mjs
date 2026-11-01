@@ -43,3 +43,9 @@ test('summaries are cut to 80 characters and counts get commas', () => {
 test('work item keys sort like Jira: by space, then by number', () => {
   assert.deepEqual(['CHK-10', 'PLT-2', 'CHK-9', 'CHK-100'].sort(compareKeys), ['CHK-9', 'CHK-10', 'CHK-100', 'PLT-2']);
 });
+
+test('a missing or unreadable date gives null instead of NaN', () => {
+  assert.equal(dayOf('not a date'), null);
+  assert.equal(dayOf(undefined), null);
+  assert.equal(dayOf(null), null);
+});

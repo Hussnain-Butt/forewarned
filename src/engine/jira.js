@@ -40,7 +40,13 @@ export function createJira(senders, { deadline, now = Date.now, sleep = (ms) => 
         }
         if (!response.ok) throw new JiraError(response.status, messageFor(name, response.status));
         const text = await response.text();
-        return text ? JSON.parse(text) : null;
+        if (!text) return null;
+        try {
+          return JSON.parse(text);
+        } catch {
+          // JSON.parse quotes the start of the body in its message, so it never reaches the user.
+          throw new JiraError(response.status, `Jira sent a response that isn't JSON for the ${name} request.`);
+        }
       }
     };
   }

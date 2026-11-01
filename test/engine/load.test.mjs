@@ -52,7 +52,7 @@ test('a capped read and a capped people list are noted', () => {
   const people = read.slice(0, 25).map((c) => ({ person: c.assignee, openTotal: 3, otherEpics: [] }));
   const epic = { ...snapshot.epic, assignee: null, people, openChildren: { total: 600, unassignedTotal: 0, read } };
   const { note } = loadSignal({ ...snapshot, epic }).check;
-  assert.match(note, /Based on the first 500 open work items\./);
+  assert.match(note, /Based on the first 30 open work items\./);
   assert.match(note, /The median is based on the 25 people with the most open work items in this epic\./);
 });
 
@@ -62,4 +62,21 @@ test('rankPeople puts the most open work in this epic first and includes the epi
   assert.equal(ranked[0].openInEpic, 6);
   assert.equal(ranked.length, 5);
   assert.ok(ranked.every((r, i) => !i || ranked[i - 1].openInEpic >= r.openInEpic));
+});
+
+test('one other epic is "1 other epic", and big counts get commas', () => {
+  const snapshot = seedSnapshot();
+  const people = snapshot.epic.people.map((p, i) => (i ? p : { ...p, openTotal: 1234, otherEpics: p.otherEpics.slice(0, 1) }));
+  const fact = loadSignal({ ...snapshot, epic: { ...snapshot.epic, people } }).drafts[0].fact;
+  assert.match(fact, / has 1,234 open work items in total, 6 of them in this epic \(0%; 1,228 elsewhere\);/);
+  assert.match(fact, /also has open work items in 1 other epic in progress: [A-Z]+-\d+\.$/);
+});
+
+test('the truncation note names how many work items were read, and lagging counts never go negative', () => {
+  const snapshot = seedSnapshot();
+  const people = snapshot.epic.people.map((p, i) => (i ? p : { ...p, openTotal: 2 })); // count lags behind 6 in the epic
+  const epic = { ...snapshot.epic, people, openChildren: { ...snapshot.epic.openChildren, total: 40 } };
+  const { check, drafts } = loadSignal({ ...snapshot, epic });
+  assert.match(check.note, /^Based on the first 17 open work items\.$/);
+  assert.ok(drafts.every((d) => d.type !== 'load-person' || d.numbers.openElsewhere >= 0));
 });

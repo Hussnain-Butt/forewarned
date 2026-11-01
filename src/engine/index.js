@@ -14,10 +14,17 @@ const BUDGET_MS = 45000;
 export async function buildEvidencePack({ senders, epicKey, accountId, now = Date.now }) {
   const started = now();
   const port = createJira(senders, { deadline: started + BUDGET_MS, now });
-  const result = await fetchSnapshot(port, epicKey, { today: dayOf(started), accountId });
-  if (result.error) return { error: result.error };
-  const pack = { ...computePack(result.snapshot), builtAt: new Date(started).toISOString() };
-  // Counts only: no keys, summaries or names reach the logs.
-  console.log(`Evidence pack: ${port.requestCount} Jira requests, ${now() - started} ms, ${Buffer.byteLength(JSON.stringify(pack), 'utf8')} bytes, ${pack.evidence.length} evidence items`);
-  return { pack };
+  let pack = null;
+  try {
+    const result = await fetchSnapshot(port, epicKey, { today: dayOf(started), now: started, accountId });
+    if (result.error) return { error: result.error };
+    pack = { ...computePack(result.snapshot), builtAt: new Date(started).toISOString() };
+    return { pack };
+  } finally {
+    // One line per run, also when it fails (AC 33). Counts only: no keys, summaries or names.
+    const spent = `${port.requestCount} Jira requests, ${now() - started} ms`;
+    console.log(pack
+      ? `Evidence pack: ${spent}, ${Buffer.byteLength(JSON.stringify(pack), 'utf8')} bytes, ${pack.evidence.length} evidence items`
+      : `Evidence pack: not built, ${spent}`);
+  }
 }

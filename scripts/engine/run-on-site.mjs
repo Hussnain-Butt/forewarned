@@ -33,7 +33,7 @@ function readEnv() {
   return { origin, auth };
 }
 
-// The same eight calls as src/engine/forge-jira.js, sent with Basic auth instead of asUser().
+// The same calls as src/engine/forge-jira.js (plus myself), sent with Basic auth instead of asUser().
 function siteSenders({ origin, auth }) {
   const send = async (path, init = {}) => {
     try {
@@ -54,6 +54,7 @@ function siteSenders({ origin, auth }) {
     search: (body) => post('/rest/api/3/search/jql', body),
     count: (jql) => post('/rest/api/3/search/approximate-count', { jql }),
     changelogs: (body) => post('/rest/api/3/changelog/bulkfetch', body),
+    bulkIssues: (body) => post('/rest/api/3/issue/bulkfetch', body),
   };
 }
 

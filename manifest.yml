@@ -40,7 +40,7 @@ modules:
       function: get-evidence-fn
       actionVerb: GET
       description: |
-        Gets the evidence pack for a Jira epic: numbered facts (E1, E2, ...) about its due date, its child work items and its status. Call this before writing any pre-mortem reasons.
+        Gets the evidence pack for a Jira epic: numbered facts (E1, E2, ...) from the team's own Jira history about how comparable epics slipped, how scope grew, who is spread thin and what blocks the epic, plus the comparison set and a check per signal. Call this before writing any pre-mortem reasons.
       inputs:
         epicKey:
           title: Epic key

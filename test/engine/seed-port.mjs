@@ -1,7 +1,10 @@
 // A fake Jira for fetch tests, answered from the same seed records as seedSnapshot(). It knows only
 // the request shapes fetch.js sends; any other JQL gets HTTP 400, so a changed query fails loudly.
 // Records may carry test-only fields: `person` (overrides the role's user), `noResolution` (a Done
-// work item without a resolution date) and `extraMoves` ([{ day, status }] added to its history).
+// work item without a resolution date), `extraMoves` ([{ day, status }] added to its history) and
+// `rawCreated` (the created value as sent). Options: `statusIds: false` sends history items without
+// status IDs (as an import might), `hidden` keys are left out of bulk fetches (spaces the user can't
+// see), `failCountFor` makes that account's count fail with 400, and `aliases` maps old keys.
 
 import { join } from 'node:path';
 import { DEMO_FILE, SEED_DIR, loadSeed, readJson } from '../../scripts/seed/test/helpers.mjs';
@@ -26,7 +29,10 @@ const PROJECT_ID = { CHK: '10100', PLT: '10101' };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const keyList = (text) => text.split(',').map((k) => k.trim().replace(/^"|"$/g, ''));
 
-export function seedPort({ edit, linkTypes = [BLOCKS], today = SEED_TODAY } = {}) {
+export function seedPort({
+  edit, linkTypes = [BLOCKS], today = SEED_TODAY, now = Date.parse(`${SEED_TODAY}T08:00:00.000Z`),
+  statusIds = true, hidden = [], failCountFor = null, aliases = {},
+} = {}) {
   const records = loadSeed(demo);
   edit?.(records);
   const day0 = dayOf(today);
@@ -53,7 +59,7 @@ export function seedPort({ edit, linkTypes = [BLOCKS], today = SEED_TODAY } = {}
     issuetype: TYPES.find((t) => t.name === r.type) ?? TYPES[1],
     project: { id: PROJECT_ID[r.space], key: r.space },
     duedate: r.due === null ? null : isoDay(day0 + r.due),
-    created: stamp(r.created),
+    created: r.rawCreated ?? stamp(r.created),
     resolutiondate: r.status === 'Done' && !r.noResolution ? stamp(r.finish) : null,
     components: r.components.map((name) => ({ name })),
     labels: r.labels,
@@ -85,7 +91,7 @@ export function seedPort({ edit, linkTypes = [BLOCKS], today = SEED_TODAY } = {}
       return all.filter((r) => r.space === m[1] && r.type === 'Epic' && r.status === 'Done' && keys.get(r.id) !== m[3] && (r.noResolution || r.finish >= -365))
         .sort((a, b) => b.finish - a.finish);
     }
-    m = /^parent in \((.+)\) AND issueLinkType = "is blocked by"$/.exec(jql);
+    m = /^parent in \((.+)\) AND issueLinkType = "is blocked by" ORDER BY key ASC$/.exec(jql);
     if (m) return sortByKey(keyList(m[1]).flatMap(childrenOf).filter((r) => r.blockedBy.length));
     m = /^parent = "([\w-]+)" AND statusCategory != Done ORDER BY key ASC$/.exec(jql);
     if (m) return sortByKey(childrenOf(m[1]).filter(isOpen));
@@ -93,20 +99,20 @@ export function seedPort({ edit, linkTypes = [BLOCKS], today = SEED_TODAY } = {}
     if (m) return sortByKey([byKey.get(m[1]), ...childrenOf(m[1]).filter(isOpen)].filter((r) => r.blockedBy.length));
     m = /^assignee = "([^"]+)" AND statusCategory != Done AND parent is not EMPTY ORDER BY key ASC$/.exec(jql);
     if (m) return sortByKey(all.filter((r) => isOpen(r) && r.parent && person(r)?.accountId === m[1]));
-    m = /^key in \((.+)\)$/.exec(jql);
-    if (m) return keyList(m[1]).map((k) => byKey.get(k)).filter(Boolean);
     return null;
   };
   const countOf = (jql) => {
     let m = /^parent = "([\w-]+)"$/.exec(jql);
     if (m) return childrenOf(m[1]).length;
-    m = /^parent = "([\w-]+)" AND created < "(\d{4}-\d{2}-\d{2})"$/.exec(jql);
-    if (m) return childrenOf(m[1]).filter((r) => day0 + r.created < dayOf(m[2])).length;
+    // Relative bound: created more than N minutes before now. Seed work items are created at 09:00 UTC.
+    m = /^parent = "([\w-]+)" AND created < "-(\d+)m"$/.exec(jql);
+    if (m) return childrenOf(m[1]).filter((r) => (day0 + r.created) * 86400000 + 9 * 3600000 < now - Number(m[2]) * 60000).length;
     m = /^parent = "([\w-]+)" AND statusCategory != Done$/.exec(jql);
     if (m) return childrenOf(m[1]).filter(isOpen).length;
     m = /^parent = "([\w-]+)" AND statusCategory != Done AND assignee is EMPTY$/.exec(jql);
     if (m) return childrenOf(m[1]).filter((r) => isOpen(r) && !person(r)).length;
     m = /^assignee = "([^"]+)" AND statusCategory != Done$/.exec(jql);
+    if (m && m[1] === failCountFor) return 'fail';
     if (m) return all.filter((r) => isOpen(r) && person(r)?.accountId === m[1]).length;
     return null;
   };
@@ -115,7 +121,15 @@ export function seedPort({ edit, linkTypes = [BLOCKS], today = SEED_TODAY } = {}
     serverInfo: async () => json({ baseUrl: SEED_SITE }),
     statuses: async () => json(Object.values(STATUS)),
     linkTypes: async () => json({ issueLinkTypes: linkTypes }),
-    issue: async (key, fields) => (byKey.has(key) ? json(issueJson(byKey.get(key), fields)) : json({ errorMessages: ['Issue does not exist'] }, 404)),
+    issue: async (key, fields) => {
+      const r = byKey.get(key) ?? records.get(aliases[key]);
+      return r ? json(issueJson(r, fields)) : json({ errorMessages: ['Issue does not exist'] }, 404);
+    },
+    // Like Jira, work items the user can't see (or that don't exist) are simply not returned.
+    bulkIssues: async (body) => json({
+      issues: body.issueIdsOrKeys.filter((k) => byKey.has(k) && !hidden.includes(k)).map((k) => issueJson(byKey.get(k), body.fields)),
+      issueErrors: [],
+    }),
     projectIssueTypes: async () => json(TYPES),
     search: async (body) => {
       log.push(body.jql);
@@ -125,6 +139,7 @@ export function seedPort({ edit, linkTypes = [BLOCKS], today = SEED_TODAY } = {}
     count: async (jql) => {
       log.push(jql);
       const n = countOf(jql);
+      if (n === 'fail') return json({ errorMessages: ['The value does not exist for the field assignee.'] }, 400);
       return n === null ? json({ errorMessages: [`Unknown JQL in the seed port: ${jql}`] }, 400) : json({ count: n });
     },
     changelogs: async (body) => json({
@@ -136,7 +151,10 @@ export function seedPort({ edit, linkTypes = [BLOCKS], today = SEED_TODAY } = {}
         moves.sort((a, b) => a.day - b.day);
         return {
           issueId: ids.get(r.id),
-          changeHistories: moves.map((mv) => ({ created: stamp(mv.day), items: [{ field: 'status', fieldId: 'status', to: STATUS[mv.status].id, toString: mv.status }] })),
+          changeHistories: moves.map((mv) => ({
+            created: stamp(mv.day),
+            items: [{ field: 'status', fieldId: 'status', ...(statusIds ? { to: STATUS[mv.status].id } : {}), toString: mv.status }],
+          })),
         };
       }),
     }),

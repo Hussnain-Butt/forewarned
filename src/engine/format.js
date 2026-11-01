@@ -7,10 +7,12 @@ const DAY_MS = 86400000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // Jira sends "2026-03-12" (due dates), "2026-03-12T10:00:00.000+0100" (timestamps) and, in bulk
-// changelogs, epoch numbers. Numbers below 1e11 are seconds, larger ones milliseconds.
+// changelogs, epoch numbers. Numbers below 1e11 are seconds, larger ones milliseconds. A missing
+// or unreadable value gives null, so callers can fall back instead of computing with NaN.
 export function dayOf(value) {
+  if (value === null || value === undefined || value === '') return null;
   const ms = typeof value === 'number' ? (value < 1e11 ? value * 1000 : value) : Date.parse(value);
-  return Math.floor(ms / DAY_MS);
+  return Number.isFinite(ms) ? Math.floor(ms / DAY_MS) : null;
 }
 
 // Day number -> "2026-03-12", for the pack's machine-readable fields.

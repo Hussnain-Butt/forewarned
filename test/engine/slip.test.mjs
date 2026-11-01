@@ -54,3 +54,15 @@ test('when every comparable epic was on time the base rate still says so', () =>
   assert.equal(drafts[0].fact, '0 of 6 comparable epics with a due date finished late (0%; 6 on time).');
   assert.ok(!drafts.some((d) => d.type === 'slip-example'));
 });
+
+test('a due date on or before the start gives a note, not "planned for -5 days"', () => {
+  const snapshot = seedSnapshot();
+  const { check, drafts } = run({ ...snapshot, epic: { ...snapshot.epic, due: snapshot.epic.start - 5 } });
+  assert.ok(!drafts.some((d) => d.type === 'plan-vs-history'));
+  assert.match(check.note, new RegExp(`${keyOf('ll-chk-e11')}'s due date is not after its start, so its plan can't be compared with history\.`));
+});
+
+test('"0 of 6 … finished late" still links the epics it counted (AC 26)', () => {
+  const onTime = (c) => ({ ...c, epics: c.epics.map((e) => (e.due === null ? e : { ...e, due: e.finish + 3 })) });
+  assert.equal(run(seedSnapshot(), onTime).drafts[0].links.length, 6);
+});

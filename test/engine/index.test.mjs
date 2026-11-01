@@ -36,3 +36,11 @@ test('a work item that is not an epic returns the AC 1 message', async () => {
   }));
   assert.deepEqual(result, { error: `${keyOf('bk-chk-e11-03')} is not an epic. Forewarned runs pre-mortems on epics only.` });
 });
+
+test('a run that builds no pack still logs its one line (AC 33)', async () => {
+  const { lines } = await capture(() => buildEvidencePack({
+    senders: seedPort().senders, epicKey: keyOf('bk-chk-e11-03'), accountId: 'acc-requester', now: () => NOW,
+  }));
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^Evidence pack: not built, \d+ Jira requests, \d+ ms$/);
+});
