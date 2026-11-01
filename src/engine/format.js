@@ -41,3 +41,10 @@ export function shorten(text, max = 80) {
 
 // 5121 -> "5,121" (AC 27 example).
 export const formatCount = (n) => n.toLocaleString('en-US');
+
+// Sorts work item keys like Jira does: by space key, then by number ("CHK-9" before "CHK-10").
+export function compareKeys(a, b) {
+  const [spaceA, numberA] = a.split('-');
+  const [spaceB, numberB] = b.split('-');
+  return spaceA === spaceB ? Number(numberA) - Number(numberB) : spaceA < spaceB ? -1 : 1;
+}

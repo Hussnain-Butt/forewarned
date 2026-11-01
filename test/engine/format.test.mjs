@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dayOf, formatCount, formatDay, isoDay, percent, roundedMedian, shorten } from '../../src/engine/format.js';
+import { compareKeys, dayOf, formatCount, formatDay, isoDay, percent, roundedMedian, shorten } from '../../src/engine/format.js';
 
 test('dayOf reads date-only, date-time and epoch values as the same UTC day', () => {
   const day = dayOf('2026-03-12');
@@ -38,4 +38,8 @@ test('summaries are cut to 80 characters and counts get commas', () => {
   assert.ok(emoji.isWellFormed(), 'cut an emoji in half');
   assert.equal(formatCount(5121), '5,121');
   assert.equal(formatCount(725), '725');
+});
+
+test('work item keys sort like Jira: by space, then by number', () => {
+  assert.deepEqual(['CHK-10', 'PLT-2', 'CHK-9', 'CHK-100'].sort(compareKeys), ['CHK-9', 'CHK-10', 'CHK-100', 'PLT-2']);
 });
