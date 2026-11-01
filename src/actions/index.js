@@ -1,6 +1,8 @@
 import api, { route } from '@forge/api';
+import { forgeSenders } from '../engine/forge-jira.js';
+import { buildEvidencePack } from '../engine/index.js';
 
-// Spike M0a: the Rovo agent reads a small evidence pack and saves its reasons on the epic.
+// The Rovo agent reads the evidence pack and saves its reasons on the epic (spike M0a, story 002).
 export const PREMORTEM_PROPERTY = 'forewarned-premortem';
 
 const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9_]*-\d+$/;
@@ -18,67 +20,24 @@ const resolveEpicKey = (payload) => {
   return typeof fromContext === 'string' && ISSUE_KEY_PATTERN.test(fromContext) ? fromContext : null;
 };
 
-const countIssues = async (jql) => {
-  const response = await api.asUser().requestJira(route`/rest/api/3/search/approximate-count`, {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jql }),
-  });
-  if (!response.ok) {
-    throw new Error(`Counting work items failed: ${response.status}`);
-  }
-  return (await response.json()).count;
-};
-
-const buildEvidence = async (epicKey) => {
-  const response = await api
-    .asUser()
-    .requestJira(route`/rest/api/3/issue/${epicKey}?fields=summary,duedate,status,issuetype`);
-  if (response.status === 404) {
-    return { error: `${epicKey} doesn't exist, or you don't have permission to see it.` };
-  }
-  if (!response.ok) {
-    throw new Error(`Reading ${epicKey} failed: ${response.status}`);
-  }
-  const { fields } = await response.json();
-  if (fields.issuetype?.hierarchyLevel !== 1) {
-    return { error: `${epicKey} is not an epic. Forewarned runs pre-mortems on epics only.` };
-  }
-
-  // epicKey matched ISSUE_KEY_PATTERN, so it is safe inside JQL.
-  const [childCount, doneCount] = await Promise.all([
-    countIssues(`parent = ${epicKey}`),
-    countIssues(`parent = ${epicKey} AND statusCategory = Done`),
-  ]);
-
-  return {
-    epicKey,
-    summary: fields.summary,
-    evidence: [
-      {
-        id: 'E1',
-        type: 'due-date',
-        fact: fields.duedate ? `The epic is due on ${fields.duedate}.` : 'The epic has no due date.',
-      },
-      {
-        id: 'E2',
-        type: 'scope',
-        fact: `The epic has ${childCount} child work items, and ${doneCount} of them are done.`,
-      },
-      { id: 'E3', type: 'status', fact: `The epic's status is ${fields.status?.name}.` },
-    ],
-  };
-};
+// Story 002: the evidence engine builds the pack as the requesting user. The user's account ID
+// comes from the function context, never from the agent's inputs (Rovo action guidance).
+const buildPack = (epicKey, context) => buildEvidencePack({
+  senders: forgeSenders(),
+  epicKey,
+  accountId: context?.principal?.accountId ?? null,
+});
 
 const errorMessage = (error) => (error instanceof Error ? error.message : 'Unknown error');
 
-export async function getEvidence(payload) {
+export async function getEvidence(payload, context) {
   const epicKey = resolveEpicKey(payload);
   if (!epicKey) {
     return { error: 'No valid epic key was given. Ask the user which epic to use, for example PLAT-1.' };
   }
   try {
-    return await buildEvidence(epicKey);
+    const { pack, error } = await buildPack(epicKey, context);
+    return error ? { error } : { epicKey, ...pack };
   } catch (error) {
     console.error('getEvidence failed:', errorMessage(error));
     return { error: errorMessage(error) };
@@ -109,7 +68,7 @@ export async function getPremortem(payload) {
   }
 }
 
-export async function submitPremortem(payload) {
+export async function submitPremortem(payload, context) {
   const epicKey = resolveEpicKey(payload);
   if (!epicKey) {
     return { saved: false, error: 'No valid epic key was given.' };
@@ -127,9 +86,9 @@ export async function submitPremortem(payload) {
 
   try {
     // Rebuild the evidence so a reason can only cite IDs that really exist for this epic.
-    const pack = await buildEvidence(epicKey);
-    if (pack.error) {
-      return { saved: false, error: pack.error };
+    const { pack, error } = await buildPack(epicKey, context);
+    if (error) {
+      return { saved: false, error };
     }
     const validIds = new Set(pack.evidence.map((item) => item.id));
 
