@@ -8,7 +8,10 @@
     "lint": "eslint src/**/*",
     "seed:generate": "node scripts/seed/generate.mjs",
     "seed:assign": "node scripts/seed/assign-personas.mjs",
-    "seed:test": "node --test \"scripts/seed/test/*.test.mjs\""
+    "seed:test": "node --test \"scripts/seed/test/*.test.mjs\"",
+    "engine:test": "node --test \"test/engine/*.test.mjs\"",
+    "engine:run": "node scripts/engine/run-on-site.mjs",
+    "test": "npm run seed:test && npm run engine:test"
   },
   "devDependencies": {
     "eslint": "^8.56.0",
