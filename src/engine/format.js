@@ -4,7 +4,7 @@
 // 1 Jan 1970, UTC), so "days late" and "days overdue" are simple subtractions (AC 10).
 
 const DAY_MS = 86400000;
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // Jira sends "2026-03-12" (due dates), "2026-03-12T10:00:00.000+0100" (timestamps) and, in bulk
 // changelogs, epoch numbers. Numbers below 1e11 are seconds, larger ones milliseconds. A missing
