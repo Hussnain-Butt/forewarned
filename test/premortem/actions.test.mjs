@@ -74,6 +74,15 @@ test('every action refuses an epic the user can\'t see, before reading anything 
   assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-2', reasonsJson: '[]' }), { saved: false, ...NOT_VISIBLE });
 });
 
+test('the Rovo actions refuse a work item that isn\'t an epic', async () => {
+  const { deps } = await setup({ withRun: false });
+  const story = keyOf('bk-chk-e11-03');
+  const notEpic = `${story} is not an epic. Forewarned runs pre-mortems on epics only.`;
+  assert.deepEqual(await getEvidenceAction({ deps, epicKey: story }), { error: notEpic });
+  assert.deepEqual(await getPremortemAction({ deps, epicKey: story }), { error: notEpic });
+  assert.deepEqual(await submitPremortemAction({ deps, epicKey: story, accountId: 'acc-1', reasonsJson: '[]' }), { saved: false, error: notEpic });
+});
+
 test('submit-premortem validates against the stored pack and saves only validated fields (AC 19, 21–22)', async () => {
   const { deps, kvs } = await setup();
   const { pack } = storedOf(kvs, EPIC_ID);

@@ -1,0 +1,67 @@
+// The panel's one data call (story 005): the reader-filtered report and evidence, the comparison
+// set, and whether the user may run.
+
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { runPremortemAction } from '../../src/premortem/actions.js';
+import { handleRun } from '../../src/premortem/consumer.js';
+import { getPanelData } from '../../src/premortem/panel.js';
+import { keyOf } from '../engine/seed-snapshot.mjs';
+import { fakeKvs, fakeQueue, fakeSenders, idOf, portOf } from './fakes.mjs';
+
+const EPIC = keyOf('ll-chk-e11');
+const EPIC_ID = await idOf(EPIC);
+const BLOCKER = keyOf('un-plt-e03-07');
+const NOW = Date.parse('2026-11-02T08:00:00.000Z');
+
+// acc-1 runs the pre-mortem; the panel then reads it with senders made from `readerOptions`.
+async function panelFor(readerOptions = {}, { withRun = true } = {}) {
+  const kvs = fakeKvs();
+  if (withRun) {
+    const builder = fakeSenders();
+    const deps = { port: portOf(builder.senders), kvs, queue: fakeQueue(kvs), now: () => NOW, newId: () => 'r1', log: () => {} };
+    await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' });
+    await handleRun({ event: { body: { runId: 'r1', epicKey: EPIC, epicId: EPIC_ID, accountId: 'acc-1' } }, senders: builder.senders, kvs, now: () => NOW, log: () => {} });
+  }
+  return getPanelData({ deps: { port: portOf(fakeSenders(readerOptions).senders), kvs }, epicKey: EPIC });
+}
+
+test('the builder gets the report, the evidence, the comparison set and may run', async () => {
+  const panel = await panelFor();
+  assert.equal(panel.issueKey, EPIC);
+  assert.equal(panel.canRun, true);
+  assert.equal(panel.report.version, 2);
+  assert.equal(panel.evidence.length, 17);
+  assert.deepEqual(Object.keys(panel.evidence[0]).sort(), ['baseRate', 'fact', 'id', 'links']);
+  assert.equal(panel.comparison.epics.length, 8);
+  assert.deepEqual(panel.epic, { summary: 'Checkout v2 launch', due: panel.epic.due });
+  assert.match(panel.epic.due, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('a reader who can\'t see the blocker gets neither it nor its reasons', async () => {
+  const panel = await panelFor({ hidden: [BLOCKER] });
+  assert.ok(!JSON.stringify(panel).includes(BLOCKER));
+  assert.equal(panel.report.hiddenForReader, true);
+});
+
+test('a viewer who can\'t edit may read but not run', async () => {
+  const panel = await panelFor({ canEdit: false });
+  assert.equal(panel.canRun, false);
+  assert.equal(panel.report.version, 2);
+});
+
+test('before any run the panel gets no report', async () => {
+  const panel = await panelFor({}, { withRun: false });
+  assert.deepEqual(panel, { issueKey: EPIC, canRun: true, report: null, evidence: [], comparison: null, epic: null });
+});
+
+test('a work item that isn\'t an epic gets "This panel works on epics only." (005 AC 3)', async () => {
+  const kvs = fakeKvs();
+  const panel = await getPanelData({ deps: { port: portOf(fakeSenders().senders), kvs }, epicKey: keyOf('bk-chk-e11-03') });
+  assert.deepEqual(panel, { error: 'This panel works on epics only.' });
+});
+
+test('an epic the user can\'t see gets the not-visible message', async () => {
+  const panel = await panelFor({ hidden: [EPIC] });
+  assert.deepEqual(panel, { error: `${EPIC} doesn't exist, or you don't have permission to see it.` });
+});

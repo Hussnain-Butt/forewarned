@@ -6,6 +6,7 @@
 // reads the epic as the user: someone who can't see it learns nothing, not even whether a run is
 // in progress.
 
+import { notAnEpic, notVisible, readEpic } from './epic.js';
 import { withAgentWriteUp } from './report.js';
 import { isRunInProgress, startRun } from './run.js';
 import { readPremortem, readRunStatus, writePremortem } from './store.js';
@@ -14,18 +15,13 @@ import { hiddenEvidenceIds, packForReader, reportForReader } from './visibility.
 
 const IN_PROGRESS = 'A new evidence run is in progress. Wait a moment, then call get-evidence again.';
 const noEvidence = (epicKey) => `No evidence found for ${epicKey}. Call run-premortem first.`;
-const notVisible = (epicKey) => `${epicKey} doesn't exist, or you don't have permission to see it.`;
 
-// The epic's key and ID as Jira gives them when the user can see the epic, otherwise null.
-// Storage is keyed by the ID (store.js).
-async function visibleEpic(port, epicKey) {
-  try {
-    const { key, id } = await port.issue(epicKey, ['issuetype']);
-    return { key, id };
-  } catch (error) {
-    if (error.status === 404) return null;
-    throw error;
-  }
+// The epic as the user sees it ({ key, id }; storage is keyed by the ID), or the message for a work
+// item they can't see or that isn't an epic.
+async function epicFor(port, requestedKey) {
+  const epic = await readEpic(port, requestedKey);
+  if (!epic) return { error: notVisible(requestedKey) };
+  return epic.isEpic ? { epic } : { error: notAnEpic(epic.key) };
 }
 
 // run-premortem: the agent's way to start compute (the shared start function, AC 1).
@@ -42,8 +38,8 @@ export async function runPremortemAction({ deps, epicKey, accountId }) {
 // without the evidence the reader can't see (story 002 AC 2). With no pack, a failed last run says
 // why, so the agent can tell the user before it tries again.
 export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
-  const epic = await visibleEpic(deps.port, requestedKey);
-  if (!epic) return { error: notVisible(requestedKey) };
+  const { epic, error } = await epicFor(deps.port, requestedKey);
+  if (error) return { error };
   const status = await readRunStatus(deps.kvs, epic.id);
   if (isRunInProgress(status, deps.now())) return { error: IN_PROGRESS };
   const stored = await readPremortem(deps.kvs, epic.id);
@@ -59,8 +55,8 @@ export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
 export async function submitPremortemAction({ deps, epicKey: requestedKey, accountId, reasonsJson, packId }) {
   const parsed = parseReasonsJson(reasonsJson);
   if (parsed.error) return { saved: false, error: parsed.error };
-  const epic = await visibleEpic(deps.port, requestedKey);
-  if (!epic) return { saved: false, error: notVisible(requestedKey) };
+  const { epic, error } = await epicFor(deps.port, requestedKey);
+  if (error) return { saved: false, error };
   const epicKey = epic.key;
   if (isRunInProgress(await readRunStatus(deps.kvs, epic.id), deps.now())) return { saved: false, error: IN_PROGRESS };
   const stored = await readPremortem(deps.kvs, epic.id);
@@ -86,8 +82,8 @@ export async function submitPremortemAction({ deps, epicKey: requestedKey, accou
 // get-premortem (and the panel): the stored version 2 report, without the reasons built on
 // evidence the reader can't see (story 002 AC 2).
 export async function getPremortemAction({ deps, epicKey: requestedKey }) {
-  const epic = await visibleEpic(deps.port, requestedKey);
-  if (!epic) return { error: notVisible(requestedKey) };
+  const { epic, error } = await epicFor(deps.port, requestedKey);
+  if (error) return { error };
   const stored = await readPremortem(deps.kvs, epic.id);
   if (!stored) return { epicKey: epic.key, report: null, message: `No pre-mortem has been saved on ${epic.key} yet.` };
   return { epicKey: epic.key, report: reportForReader(stored.report, await hiddenEvidenceIds(deps.port, stored.pack)) };

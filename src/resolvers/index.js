@@ -4,7 +4,7 @@ import { kvs } from '@forge/kvs';
 import { randomUUID } from 'node:crypto';
 import { forgeSenders } from '../engine/forge-jira.js';
 import { createJira } from '../engine/jira.js';
-import { getPremortemAction } from '../premortem/actions.js';
+import { getPanelData } from '../premortem/panel.js';
 import { startRun } from '../premortem/run.js';
 import { readRunStatus } from '../premortem/store.js';
 
@@ -13,19 +13,18 @@ const runQueue = new Queue({ key: 'premortem-run' });
 // Resolvers have 25 s; starting a run needs only a few requests.
 const START_BUDGET_MS = 15000;
 
-// The panel's report, without the reasons built on evidence this viewer can't see (story 002 AC 2).
-resolver.define('getPremortem', async ({ context }) => {
+// Everything the panel shows, filtered for this viewer (story 005; story 002 AC 2).
+resolver.define('getPanel', async ({ context }) => {
   const issueKey = context.extension?.issue?.key;
   if (!issueKey) {
     return { error: 'This panel needs a work item to show its pre-mortem.' };
   }
   try {
     const port = createJira(forgeSenders(), { deadline: Date.now() + START_BUDGET_MS });
-    const { report, error } = await getPremortemAction({ deps: { port, kvs }, epicKey: issueKey });
-    return { issueKey, report, error };
+    return await getPanelData({ deps: { port, kvs }, epicKey: issueKey });
   } catch (error) {
-    console.error('getPremortem failed:', error instanceof Error ? error.name : 'Unknown error');
-    return { issueKey, error: "The pre-mortem couldn't be loaded. Try Refresh in a minute." };
+    console.error('getPanel failed:', error instanceof Error ? error.name : 'Unknown error');
+    return { error: "Forewarned couldn't load the pre-mortem (Jira didn't respond). Try again in a minute." };
   }
 });
 
