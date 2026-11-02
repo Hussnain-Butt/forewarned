@@ -222,23 +222,30 @@ const App = () => {
   );
 };
 
-// A render error shows a message instead of Jira's endless loading bars (story 005 AC 28).
+// A render error shows a message with Try again instead of Jira's endless loading bars (story 005
+// AC 28). The error itself goes to the browser console, not to the reader.
 class PanelErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { error: null };
+    this.state = { failed: false };
   }
 
-  static getDerivedStateFromError(error) {
-    return { error };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    console.error('Forewarned panel error:', error);
   }
 
   render() {
-    const { error } = this.state;
-    if (!error) return this.props.children;
+    if (!this.state.failed) return this.props.children;
     return (
-      <SectionMessage appearance="error">
-        <Text>{`Forewarned couldn't show this panel (${error.name}: ${error.message}). Reload the page to try again.`}</Text>
+      <SectionMessage
+        appearance="error"
+        actions={<SectionMessageAction onClick={() => this.setState({ failed: false })}>Try again</SectionMessageAction>}
+      >
+        <Text>Forewarned couldn&apos;t show this panel. Try again, or reload the page if it happens again.</Text>
       </SectionMessage>
     );
   }

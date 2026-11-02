@@ -36,7 +36,7 @@ const ReasonCard = ({ number, reason, evidenceById, epicKey }) => {
   return (
     <Box xcss={cardStyle}>
       <Stack space="space.100">
-        <Heading as="h5" size="xsmall">{`${number}. ${reason.title}`}</Heading>
+        <Heading size="small">{`${number}. ${reason.title}`}</Heading>
         <Inline>
           <Lozenge appearance={lozenge.appearance}>{lozenge.text}</Lozenge>
         </Inline>
@@ -73,7 +73,7 @@ const ReasonCard = ({ number, reason, evidenceById, epicKey }) => {
 // A ranked list of reasons with its source label (AC 12, 15).
 const ReasonList =({ label, reasons, evidenceById, epicKey }) => (
   <Stack space="space.150">
-    <Heading as="h4" size="xxsmall">{label}</Heading>
+    <Text size="small" weight="medium" color="color.text.subtle">{label}</Text>
     {(reasons || []).map((reason, i) => (
       <ReasonCard key={`${i}-${reason.title}`} number={i + 1} reason={reason} evidenceById={evidenceById} epicKey={epicKey} />
     ))}
@@ -97,12 +97,11 @@ const Checks = ({ intro, checks }) => (
   </SectionMessage>
 );
 
-// The comparison set, expandable (AC 13).
+// The comparison set, expandable (AC 13). Not shown without epics: the history line says so.
 const ComparisonSet = ({ comparison, space }) => {
   const [open, setOpen] = useState(false);
   const parts = comparisonParts(comparison, space);
   const one = parts.rows.length === 1;
-  if (!parts.rows.length) return <Text size="small" color="color.text.subtle">{parts.line}</Text>;
   return (
     <Stack space="space.050">
       <Text size="small" color="color.text.subtle">{parts.line}</Text>
@@ -127,12 +126,13 @@ const ComparisonSet = ({ comparison, space }) => {
   );
 };
 
-// Who ran it and when (AC 14); the exact time is in the text, so screen readers get it too.
+// Who ran it and when (AC 14); the exact time is in the text, so screen readers get it too. The
+// user sits inside the text, so the name wraps with it instead of dropping to its own line.
 const RunInfo = ({ report, now }) => (
-  <Inline space="space.075" alignBlock="center" shouldWrap>
-    <Text size="small" color="color.text.subtle">{`Last run ${relativeTime(report.runAt, now)} (${exactTime(report.runAt)}) by`}</Text>
+  <Text size="small" color="color.text.subtle">
+    {`Last run ${relativeTime(report.runAt, now)} (${exactTime(report.runAt)}) by `}
     <User accountId={report.runBy} />
-  </Inline>
+  </Text>
 );
 
 // The agent's write-up (AC 20–21): only when it was written on this evidence run, in likelihood
@@ -164,7 +164,7 @@ export const Report = ({ panel, now, tab, onTabChange }) => {
   return (
     <Stack space="space.200">
       <Stack space="space.050">
-        <Heading as="h3" size="small">{head.text}</Heading>
+        <Heading size="medium">{head.text}</Heading>
         {head.note ? <Text size="small" color="color.text.subtle">{head.note}</Text> : null}
       </Stack>
       {isOld(report.runAt, now) ? (
@@ -193,7 +193,7 @@ export const Report = ({ panel, now, tab, onTabChange }) => {
       ) : (
         <ReasonList label="From your Jira history (rule-based, no AI)" reasons={report.ruleBased?.reasons} evidenceById={evidenceById} epicKey={issueKey} />
       )}
-      {comparison ? <ComparisonSet comparison={comparison} space={space} /> : null}
+      {comparison?.epics?.length ? <ComparisonSet comparison={comparison} space={space} /> : null}
       <RunInfo report={report} now={now} />
     </Stack>
   );
