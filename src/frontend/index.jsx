@@ -10,6 +10,9 @@ const POLL_MS = 2000;
 const POLL_LIMIT_MS = 5 * 60 * 1000;
 const LOZENGE = { High: 'removed', Medium: 'moved', Low: 'default' };
 const SIGNALS = { slip: 'Slip history', scope: 'Scope growth', load: 'Load', dependencies: 'Dependencies' };
+// The run's steps (src/premortem/consumer.js) as panel text; the rest read "Checking ‹step›…".
+const STEP_TEXT = { queued: 'Waiting to start…', writing: 'Writing the report…' };
+const stepText = (step) => STEP_TEXT[step] ?? `Checking ${step}…`;
 const wait = (ms) => new Promise((done) => { setTimeout(done, ms); });
 
 const Reason = ({ reason }) => (
@@ -145,7 +148,7 @@ const App = () => {
       {running ? (
         <Inline space="space.100" alignBlock="center">
           <Spinner size="small" label="Running" />
-          <Text>Checking {run.step}…</Text>
+          <Text>{stepText(run.step)}</Text>
         </Inline>
       ) : null}
       {report ? <Report report={report} /> : !running && <Text>No pre-mortem yet. Click Run pre-mortem.</Text>}

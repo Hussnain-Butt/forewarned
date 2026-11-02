@@ -21,7 +21,8 @@ export function slipSignal(snapshot, comparison) {
   const enough = epics.length >= MIN_EPICS;
 
   if (!enough) {
-    notes.push(`Only ${epics.length} finished epic(s) found in ${epic.space} in the last 12 months; Forewarned needs ${MIN_EPICS} for slip patterns.`);
+    const found = epics.length ? `Only ${counted(epics.length, 'finished epic')}` : 'No finished epics';
+    notes.push(`${found} found in ${epic.space} in the last 12 months; Forewarned needs ${MIN_EPICS} for slip patterns.`);
   } else {
     // AC 11: the share of comparable epics with a due date that finished late.
     const withDue = epics.filter((e) => e.daysLate !== null);

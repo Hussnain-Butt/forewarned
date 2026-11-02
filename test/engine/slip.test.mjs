@@ -43,9 +43,16 @@ test('without any due dates there is no late base rate and no plan comparison', 
 test('fewer than 3 comparable epics: insufficient, and no base rates', () => {
   const { check, drafts } = run(seedSnapshot(), (c) => ({ ...c, epics: c.epics.slice(0, 2) }));
   assert.equal(check.status, 'insufficient');
-  assert.match(check.note, /^Only 2 finished epic\(s\) found in CHK in the last 12 months; Forewarned needs 3 for slip patterns\./);
+  assert.match(check.note, /^Only 2 finished epics found in CHK in the last 12 months; Forewarned needs 3 for slip patterns\./);
   assert.ok(drafts.every((d) => !d.baseRate));
   assert.deepEqual(drafts.map((d) => d.type), ['slip-example']); // the epic finished 30 days late
+});
+
+// PLAT-1 on the demo site read "Only 0 finished epic(s) found".
+test('the insufficient-history note counts 0 and 1 finished epics in words', () => {
+  const noteFor = (count) => run(seedSnapshot(), (c) => ({ ...c, epics: c.epics.slice(0, count) })).check.note;
+  assert.match(noteFor(0), /^No finished epics found in CHK in the last 12 months; Forewarned needs 3 for slip patterns\./);
+  assert.match(noteFor(1), /^Only 1 finished epic found in CHK in the last 12 months; Forewarned needs 3 for slip patterns\./);
 });
 
 test('when every comparable epic was on time the base rate still says so', () => {

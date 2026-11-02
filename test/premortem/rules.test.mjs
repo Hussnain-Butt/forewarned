@@ -108,6 +108,13 @@ test('at most 5 reasons, at most 2 dependency reasons, High before Medium before
   assert.ok(reasons.every((r, i) => !i || rank[reasons[i - 1].likelihood] <= rank[r.likelihood]));
 });
 
+// PLAT-1 on the demo site: 1 work item at the start fired "Scope will keep growing" on "512000% more".
+test('growth from fewer than 5 work items at the start is not a scope reason', () => {
+  const seed = seedSnapshot();
+  const pack = computePack({ ...seed, candidates: seed.candidates.slice(0, 2), epic: { ...seed.epic, childCountAtStart: 1, childCount: 5121 } });
+  assert.ok(!ruleBasedReasons(pack).some((r) => r.ruleId === 'scope-growth'));
+});
+
 test('an open blocker from the epic\'s own space is not a dependency reason', () => {
   const pack = seedPack();
   const blocker = pack.evidence.find((e) => e.type === 'open-blocker');
