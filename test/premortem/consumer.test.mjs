@@ -14,14 +14,14 @@ const EPIC = keyOf('ll-chk-e11');
 const NOW = Date.parse('2026-11-02T08:00:00.000Z');
 const quiet = () => {};
 
-async function run({ epicKey = EPIC, statusRunId = 'r1', eventRunId = 'r1', senderOptions, before } = {}) {
+async function run({ epicKey = EPIC, statusRunId = 'r1', eventRunId = 'r1', statusValue = 'queued', principal, senderOptions, before } = {}) {
   const kvs = fakeKvs();
   const fake = fakeSenders(senderOptions);
-  await kvs.set(`run:${epicKey}`, { runId: statusRunId, status: 'queued', step: null, startedAt: new Date(NOW).toISOString(), finishedAt: null, error: null });
+  await kvs.set(`run:${epicKey}`, { runId: statusRunId, status: statusValue, step: null, startedAt: new Date(NOW).toISOString(), finishedAt: null, error: null });
   kvs.writes.length = 0;
   await before?.(fake);
   const logs = [];
-  await handleRun({ event: { body: { runId: eventRunId, epicKey, accountId: 'acc-1' } }, senders: fake.senders, kvs, now: () => NOW, log: (line) => logs.push(line) });
+  await handleRun({ event: { body: { runId: eventRunId, epicKey, accountId: 'acc-1' } }, principal, senders: fake.senders, kvs, now: () => NOW, log: (line) => logs.push(line) });
   return { kvs, fake, logs, status: kvs.data.get(`run:${epicKey}`).value };
 }
 
@@ -75,4 +75,28 @@ test('an agent write-up survives a new run, marked as based on an older pack (AC
   const { fake } = await run({ before });
   const report = fake.properties.get(`${EPIC}/${REPORT_PROPERTY}`);
   assert.deepEqual(report.agent, { ...agent, stale: true });
+});
+
+test('a duplicate delivery of a finished run does nothing', async () => {
+  for (const statusValue of ['done', 'failed']) {
+    const { kvs, fake } = await run({ statusValue });
+    assert.equal(kvs.writes.length, 0);
+    assert.equal(fake.properties.size, 0);
+  }
+});
+
+test('an event that arrives while its run already shows "running" was retried after a timeout: it fails', async () => {
+  const { status, logs, fake } = await run({ statusValue: 'running' });
+  assert.equal(status.status, 'failed');
+  assert.equal(status.error, 'The run took too long. Try again in a minute.');
+  assert.deepEqual(logs, ['Pre-mortem run failed: retried']);
+  assert.equal(fake.properties.size, 0);
+});
+
+test('an event whose principal is another user fails instead of spinning', async () => {
+  const { status, fake } = await run({ principal: 'acc-2' });
+  assert.equal(status.status, 'failed');
+  assert.equal(status.error, "Forewarned couldn't confirm who started this run. Try again.");
+  assert.equal(fake.properties.size, 0);
+  assert.equal((await run({ principal: 'acc-1' })).status.status, 'done');
 });

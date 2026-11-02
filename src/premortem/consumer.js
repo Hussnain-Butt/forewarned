@@ -24,20 +24,38 @@ class RunFailure extends Error {
   }
 }
 
-// Runs one queued pre-mortem. `senders` must act as the user in event.body.accountId.
-export async function handleRun({ event, senders, kvs: store, now = Date.now, log = console.log }) {
+// Runs one queued pre-mortem. `senders` must act as the user in event.body.accountId; `principal`
+// is the account ID the platform gives the consumer, when it gives one.
+export async function handleRun({ event, principal, senders, kvs: store, now = Date.now, log = console.log }) {
   const { runId, epicKey, accountId } = event.body ?? {};
   if (!runId || !accountId || !ISSUE_KEY.test(epicKey ?? '')) {
     log('Pre-mortem run skipped: invalid event');
     return;
   }
-  // A newer run (or none) for this epic means this event is out of date.
+  // A newer run (or none) for this epic means this event is out of date; a finished run's event
+  // can arrive again because delivery is "at least once".
   const current = await readRunStatus(store, epicKey);
-  if (current?.runId !== runId) {
-    log('Pre-mortem run skipped: replaced by a newer run');
+  if (current?.runId !== runId || ['done', 'failed'].includes(current.status)) {
+    log('Pre-mortem run skipped: replaced by a newer run, or already finished');
     return;
   }
   const setStatus = (fields) => writeRunStatus(store, epicKey, { runId, startedAt: current.startedAt, step: null, finishedAt: null, error: null, ...fields });
+  const fail = async (code, message) => {
+    await setStatus({ status: 'failed', finishedAt: new Date(now()).toISOString(), error: message });
+    log(`Pre-mortem run failed: ${code}`);
+  };
+  // The event was written by startRun from the Forge context of the user who clicked Run; if the
+  // platform names a different user, nothing runs on their behalf.
+  if (principal && principal !== accountId) {
+    await fail('principal', "Forewarned couldn't confirm who started this run. Try again.");
+    return;
+  }
+  // "running" before this event started means an earlier delivery timed out (300 s) or crashed;
+  // running again would only time out again, so the run ends here.
+  if (current.status === 'running' || event.retryContext) {
+    await fail('retried', 'The run took too long. Try again in a minute.');
+    return;
+  }
   // One KVS write per step: a step the status already shows is not written again.
   let shownStep = null;
   const showStep = (step) => {
@@ -79,14 +97,13 @@ export async function handleRun({ event, senders, kvs: store, now = Date.now, lo
   }
 }
 
-// The Forge function behind the consumer module. The account ID was put in the event by
-// startRun from the Forge context of the user who clicked Run; if the platform passes a principal,
-// it must be the same user.
+// The Forge function behind the consumer module. It impersonates the user named in the event
+// (offline user impersonation); handleRun checks that against the platform's principal first.
 export async function handler(event, context) {
-  const accountId = event.body?.accountId;
-  if (context?.principal?.accountId && accountId && context.principal.accountId !== accountId) {
-    console.log('Pre-mortem run skipped: the event does not match its principal');
-    return;
-  }
-  await handleRun({ event, senders: forgeSenders(api.asUser(accountId)), kvs });
+  await handleRun({
+    event,
+    principal: context?.principal?.accountId,
+    senders: forgeSenders(api.asUser(event.body?.accountId)),
+    kvs,
+  });
 }

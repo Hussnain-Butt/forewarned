@@ -3,7 +3,7 @@
 // and `about` fields, never their fact text) and quotes the facts it cites, so every reason passes
 // the validator (story 003) unchanged.
 
-import { counted } from '../engine/format.js';
+import { counted, shorten } from '../engine/format.js';
 
 // Thresholds (story 004 AC 4). Change one only when a failure shows on at least two of: the seed,
 // PLAT-1 and the dogfood spaces (open question 1), and log the reason here.
@@ -20,6 +20,7 @@ const DEPENDENCY_LATE_SHARE = 0.5; // a blocking space's history counts when at 
 const DEPENDENCY_MIN_EPICS = 2; // ...at least 2 comparable epics blocked by it finished late
 const MAX_DEPENDENCY = 2;
 const MAX_REASONS = 5;
+const SUBJECT_CHARS = 80; // epic summaries in titles and mitigations, so they stay within the validator's limits
 
 const RULE_ORDER = ['dependency', 'slip-base-rate', 'plan-shorter', 'scope-growth', 'load'];
 const LIKELIHOOD_ORDER = { High: 0, Medium: 1, Low: 2 };
@@ -37,10 +38,14 @@ function reason(ruleId, title, likelihood, cited, explanation, mitigation) {
 const facts = (items) => items.filter(Boolean).map((item) => item.fact).join(' ');
 
 // Up to 2 reasons, one per other space with an open blocker, strongest history first.
-function dependencyReasons(pack, ofType) {
+// The epic's own space comes from its key; the pack's epic record has no space field.
+const spaceOf = (key) => key.replace(/-\d+$/, '');
+
+function dependencyReasons(pack, ofType, subject) {
+  const epicSpace = spaceOf(pack.epic.key);
   const bySpace = new Map();
   for (const blocker of ofType('open-blocker')) {
-    if (blocker.about.space !== pack.epic.space && !bySpace.has(blocker.about.space)) bySpace.set(blocker.about.space, blocker);
+    if (blocker.about.space !== epicSpace && !bySpace.has(blocker.about.space)) bySpace.set(blocker.about.space, blocker);
   }
   return [...bySpace.entries()].map(([space, blocker]) => {
     const history = ofType('blocker-history').find((item) => item.about.space === space);
@@ -50,7 +55,7 @@ function dependencyReasons(pack, ofType) {
     let likelihood = 'Low';
     if (historyLate && urgent) likelihood = 'High';
     else if (historyLate || urgent) likelihood = 'Medium';
-    return reason('dependency', `${space} work could block ${pack.epic.summary}${history ? ' again' : ''}`, likelihood,
+    return reason('dependency', `${space} work could block ${subject}${history ? ' again' : ''}`, likelihood,
       [blocker, history, example], facts([blocker, history]),
       `Agree a date for ${blocker.about.blocker} with the ${space} team and give it an owner.`);
   }).sort((a, b) => LIKELIHOOD_ORDER[a.likelihood] - LIKELIHOOD_ORDER[b.likelihood]).slice(0, MAX_DEPENDENCY);
@@ -77,7 +82,7 @@ function planReason(ofType) {
     `Re-plan against the median of ${counted(duration.numbers.medianDurationDays, 'day')}, or cut scope to fit ${counted(plannedDays, 'day')}.`);
 }
 
-function scopeReason(pack, ofType) {
+function scopeReason(ofType, subject) {
   const history = ofType('scope-base-rate')[0];
   const current = ofType('scope-current')[0];
   const historyGrows = Boolean(history && history.numbers.epics >= MIN_EPICS && history.numbers.medianGrowthPercent >= SCOPE_HISTORY_PERCENT);
@@ -85,18 +90,18 @@ function scopeReason(pack, ofType) {
   if (!historyGrows && !currentGrows) return null;
   const cited = [historyGrows ? history : null, currentGrows ? current : null];
   return reason('scope-growth', 'Scope will keep growing after the plan is set', historyGrows && currentGrows ? 'High' : 'Medium',
-    cited, facts(cited), `Freeze scope for ${pack.epic.summary} and move new work to a follow-up epic.`);
+    cited, facts(cited), `Freeze scope for ${subject} and move new work to a follow-up epic.`);
 }
 
 // The person with the most open work among those over a load threshold; Medium at most, because
 // no base rate exists for load (AC 4).
-function loadReason(pack, ofType) {
+function loadReason(ofType, subject) {
   const busy = ofType('load-person').filter(({ numbers: n }) => (n.openTotal >= LOAD_MIN_OPEN && n.openTotal >= n.medianOpen * LOAD_MEDIAN_FACTOR)
     || n.otherEpicsInProgress >= LOAD_OTHER_EPICS);
   if (!busy.length) return null;
   const person = busy.reduce((top, item) => (item.numbers.openTotal > top.numbers.openTotal ? item : top));
   const { name } = person.about;
-  return reason('load', `${name}'s workload could slow ${pack.epic.summary}`, 'Medium',
+  return reason('load', `${name}'s workload could slow ${subject}`, 'Medium',
     [person, ofType('load-unassigned')[0]], person.fact,
     `Move some of ${name}'s open work items to someone else, or free ${name} from another epic.`);
 }
@@ -105,12 +110,13 @@ function loadReason(pack, ofType) {
 // No padding: when no rule fires the list is empty (AC 11).
 export function ruleBasedReasons(pack) {
   const ofType = (type) => pack.evidence.filter((item) => item.type === type);
+  const subject = shorten(pack.epic.summary, SUBJECT_CHARS);
   const reasons = [
-    ...dependencyReasons(pack, ofType),
+    ...dependencyReasons(pack, ofType, subject),
     slipReason(ofType),
     planReason(ofType),
-    scopeReason(pack, ofType),
-    loadReason(pack, ofType),
+    scopeReason(ofType, subject),
+    loadReason(ofType, subject),
   ].filter(Boolean);
   return reasons
     .map((r, i) => ({ r, i }))

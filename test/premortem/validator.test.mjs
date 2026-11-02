@@ -108,3 +108,15 @@ test("the epic's own key and summary are known in every reason", () => {
   assert.ok(keptOne(reason({ title: 'Epics like Release 3.1 checkout usually finish late', mitigation: 'Plan CHK-12 for the median slip of 21 days.' })));
   assert.equal(droppedCode(reason({ mitigation: 'Plan CHK-13 for the median slip of 21 days.' })), 'unknown-key');
 });
+
+test('a key-like word in the epic summary is known too', () => {
+  const pack = { ...PACK, epic: { key: 'CHK-12', summary: 'ISO-27001 audit readiness' } };
+  const kept = validateReasons([reason({ mitigation: 'Freeze scope for ISO-27001 audit readiness.' })], pack).kept;
+  assert.equal(kept.length, 1);
+});
+
+test('numbers glued to a unit still count ("3x", "40days", "10k"); ordinals do not', () => {
+  assert.deepEqual([...numbersIn('3x longer, about 40days, 10k items, 1.5x, the 1st and 21st')].sort(), ['1.5', '10', '3', '40'].sort());
+  assert.equal(droppedCode(reason({ explanation: 'Comparable epics took 3x longer.' })), 'unknown-number');
+  assert.equal(droppedCode(reason({ explanation: 'They slipped about 40days.' })), 'unknown-number');
+});

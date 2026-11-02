@@ -12,10 +12,11 @@ import { fakeKvs, fakeQueue, fakeSenders, portOf } from './fakes.mjs';
 const EPIC = keyOf('ll-chk-e11');
 const NOW = Date.parse('2026-11-02T08:00:00.000Z');
 
-async function setup({ withRun = true } = {}) {
-  const fake = fakeSenders();
+async function setup({ withRun = true, senderOptions } = {}) {
+  const fake = fakeSenders(senderOptions);
   const kvs = fakeKvs();
-  const deps = { port: portOf(fake.senders), kvs, queue: fakeQueue(kvs), now: () => NOW, newId: () => 'r1', log: () => {} };
+  const logs = [];
+  const deps = { port: portOf(fake.senders), kvs, queue: fakeQueue(kvs), now: () => NOW, newId: () => 'r1', log: (line) => logs.push(line), logs };
   if (withRun) {
     await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' });
     await handleRun({ event: { body: { runId: 'r1', epicKey: EPIC, accountId: 'acc-1' } }, senders: fake.senders, kvs, now: () => NOW, log: () => {} });
@@ -70,6 +71,7 @@ test('submit-premortem validates against the stored pack and saves only validate
   assert.deepEqual(report.agent.droppedByRule, { 'unknown-number': 1, 'no-history-evidence': 1 });
   assert.equal(report.agent.stale, false);
   assert.ok(report.ruleBased.reasons.length, 'the rule-based part is kept');
+  assert.deepEqual(deps.logs, ['Reason dropped: unknown-number', 'Reason dropped: no-history-evidence']);
 });
 
 test('submit-premortem refuses a changed pack, a run in progress, no evidence and no surviving reason (AC 19–20)', async () => {
@@ -94,4 +96,21 @@ test('get-premortem returns the version 2 report, or says none is saved yet', as
   assert.deepEqual(await getPremortemAction({ deps, epicKey: EPIC }), { epicKey: EPIC, report: fake.properties.get(`${EPIC}/${REPORT_PROPERTY}`) });
   const empty = await setup({ withRun: false });
   assert.deepEqual(await getPremortemAction({ deps: empty.deps, epicKey: EPIC }), { epicKey: EPIC, report: null, message: `No pre-mortem has been saved on ${EPIC} yet.` });
+});
+
+test('a pack and report from different runs (a run that half-saved) are refused', async () => {
+  const { deps, fake } = await setup();
+  const pack = packOf(fake);
+  fake.properties.set(`${EPIC}/${EVIDENCE_PROPERTY}`, { ...pack, packId: 'newer-pack' });
+  assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, reasonsJson: JSON.stringify([good(pack)]) }),
+    { saved: false, error: "The last run didn't finish saving. Call run-premortem again." });
+});
+
+test('someone who can view but not edit the epic gets a clear message when saving', async () => {
+  const { deps, fake } = await setup();
+  fake.senders.setIssueProperty = async () => new Response(JSON.stringify({ errorMessages: ['Forbidden'] }), { status: 403 });
+  deps.port = portOf(fake.senders); // the port wraps the senders it was made with
+  const pack = packOf(fake);
+  assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, packId: pack.packId, reasonsJson: JSON.stringify([good(pack)]) }),
+    { saved: false, error: `You can view ${EPIC} but can't edit it, so the pre-mortem can't be saved.` });
 });

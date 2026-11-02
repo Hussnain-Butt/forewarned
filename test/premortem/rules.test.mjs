@@ -107,3 +107,24 @@ test('at most 5 reasons, at most 2 dependency reasons, High before Medium before
   const rank = { High: 0, Medium: 1, Low: 2 };
   assert.ok(reasons.every((r, i) => !i || rank[reasons[i - 1].likelihood] <= rank[r.likelihood]));
 });
+
+test('an open blocker from the epic\'s own space is not a dependency reason', () => {
+  const pack = seedPack();
+  const blocker = pack.evidence.find((e) => e.type === 'open-blocker');
+  const sameSpace = { ...blocker, id: 'E90', about: { space: 'CHK', blocker: 'CHK-999', unassigned: true } };
+  const reasons = ruleBasedReasons({ ...pack, evidence: [...pack.evidence.filter((e) => e !== blocker), sameSpace] });
+  assert.ok(!reasons.some((r) => r.ruleId === 'dependency'), JSON.stringify(reasons.map((r) => r.title)));
+});
+
+test('a long epic summary is shortened in titles and mitigations, and the reason still passes', () => {
+  const pack = seedPack();
+  const longPack = { ...pack, epic: { ...pack.epic, summary: `Checkout v2 launch ${'with many more words '.repeat(10)}` } };
+  const reasons = ruleBasedReasons(longPack);
+  for (const r of reasons) {
+    assert.ok(Array.from(r.title).length <= 120, r.title);
+    assert.ok(Array.from(r.mitigation).length <= 200, r.mitigation);
+  }
+  assert.match(reasons.find((r) => r.ruleId === 'scope-growth').mitigation, /… and move new work to a follow-up epic\.$/);
+  const { dropped } = validateReasons(reasons, longPack, { keep: ['ruleId', 'baseRateFact'] });
+  assert.deepEqual(dropped, []);
+});

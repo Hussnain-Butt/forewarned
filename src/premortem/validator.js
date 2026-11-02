@@ -10,8 +10,10 @@ const LIKELIHOODS = { high: 'High', medium: 'Medium', low: 'Low' };
 
 const KEY = /\b[A-Z][A-Z0-9_]*-\d+\b/g;
 const EVIDENCE_ID = /\bE\d+\b/g;
-// A number not glued to a letter, digit or dot: "42", "5,121", "1.5", "86 %" (but not "v2" or "1st").
-const NUMBER = /(?<![\w.])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?!\w)(?:\s?%)?/g;
+// A number not glued to a letter, digit or dot before it: "42", "5,121", "1.5", "86 %", and also
+// "3x", "40days" or "10k" (a unit after it still leaves a quantity), but not "v2" or the ordinals
+// "1st", "2nd", "3rd", "21st".
+const NUMBER = /(?<![\w.])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?!\d)(?!(?:st|nd|rd|th)\b)(?:\s?%)?/g;
 // Spelled-out numbers count too (open question 2); "one" is left out, it is too common in English.
 const NUMBER_WORDS = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
 const NUMBER_WORD = new RegExp(`\\b(${Object.keys(NUMBER_WORDS).join('|')})\\b`, 'gi');
@@ -79,7 +81,7 @@ function check(input, byId, epic, keep) {
   const sources = [epic?.summary, ...cited.flatMap((item) => [item.fact, ...(item.links ?? []).map((l) => l.summary)])];
   const knownNumbers = new Set(sources.flatMap((s) => [...numbersIn(s)]));
   if ([...numbersIn(written)].some((n) => !knownNumbers.has(n))) return { code: 'unknown-number', title };
-  const knownKeys = new Set([epic?.key, ...cited.flatMap((item) => [...keysIn(item.fact), ...(item.links ?? []).map((l) => l.key)])]);
+  const knownKeys = new Set([epic?.key, ...keysIn(epic?.summary), ...cited.flatMap((item) => [...keysIn(item.fact), ...(item.links ?? []).map((l) => l.key)])]);
   if ([...keysIn(written)].some((k) => !knownKeys.has(k))) return { code: 'unknown-key', title };
 
   // AC 14: High needs a cited base rate.

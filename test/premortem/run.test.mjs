@@ -21,7 +21,7 @@ test('a run writes "queued" first, then pushes one event with the run, the epic 
   assert.deepEqual(await start(deps), { runId: 'run-new', status: 'started' });
   assert.equal(deps.queue.pushes.length, 1);
   const { event, kvsAtPush } = deps.queue.pushes[0];
-  assert.deepEqual(event, { body: { runId: 'run-new', epicKey: EPIC, accountId: 'acc-1' }, concurrency: { key: `run:${EPIC}`, limit: 1 } });
+  assert.deepEqual(event, { body: { runId: 'run-new', epicKey: EPIC, accountId: 'acc-1' }, concurrency: { key: `run-${EPIC}`, limit: 1 } });
   assert.equal(new Map(kvsAtPush).get(`run:${EPIC}`).value.status, 'queued');
 });
 
@@ -30,6 +30,9 @@ test('only epics, only existing ones, only for people who can edit them (AC 1)',
   assert.deepEqual(await start(setup(), 'CHK-99999'), { error: "CHK-99999 doesn't exist, or you don't have permission to see it." });
   assert.deepEqual(await start(setup({ canEdit: false })), { error: `You can view ${EPIC} but can't edit it, so Forewarned can't save a pre-mortem on it.` });
   assert.deepEqual(await start(setup(), 'not a key'), { error: 'No valid epic key was given.' });
+  const deps = setup();
+  assert.deepEqual(await startRun({ ...deps, epicKey: EPIC, accountId: undefined, now: () => NOW, newId: () => 'r' }),
+    { error: "Forewarned couldn't tell who is asking, so it can't start a run." });
 });
 
 test('one run per epic: a queued or running run is returned, nothing is pushed (AC 2)', async () => {
@@ -57,4 +60,15 @@ test('entity properties: read gives null when missing, write stores the value', 
   await writeProperty(port, EPIC, 'forewarned-evidence', { packId: 'p1' });
   assert.deepEqual(properties.get(`${EPIC}/forewarned-evidence`), { packId: 'p1' });
   assert.deepEqual(await readProperty(port, EPIC, 'forewarned-evidence'), { packId: 'p1' });
+});
+
+test('a failed queue push leaves a "failed" status, not a stuck "queued" one', async () => {
+  const deps = setup();
+  deps.queue.push = async () => { throw new Error('Too many requests.'); };
+  await assert.rejects(start(deps), /Too many requests/);
+  const status = deps.kvs.data.get(`run:${EPIC}`).value;
+  assert.equal(status.status, 'failed');
+  assert.equal(status.error, "Forewarned couldn't start the run. Try again in a minute.");
+  deps.queue.push = async () => ({ jobId: 'j' });
+  assert.equal((await start(deps)).status, 'started');
 });

@@ -45,7 +45,14 @@ export async function submitPremortemAction({ deps, epicKey, reasonsJson, packId
   }
   const report = await readProperty(deps.port, epicKey, REPORT_PROPERTY);
   if (report?.version !== 2) return { saved: false, error: noEvidence(epicKey) };
-  await writeProperty(deps.port, epicKey, REPORT_PROPERTY, withAgentWriteUp(report, { reasons: kept, droppedByRule, packId: pack.packId, now: deps.now() }));
+  // A run that saved its pack but not its report leaves the two out of step.
+  if (report.packId !== pack.packId) return { saved: false, error: "The last run didn't finish saving. Call run-premortem again." };
+  try {
+    await writeProperty(deps.port, epicKey, REPORT_PROPERTY, withAgentWriteUp(report, { reasons: kept, droppedByRule, packId: pack.packId, now: deps.now() }));
+  } catch (error) {
+    if (error.status === 403) return { saved: false, error: `You can view ${epicKey} but can't edit it, so the pre-mortem can't be saved.` };
+    throw error;
+  }
   return { saved: true, epicKey, savedReasons: kept.length, dropped };
 }
 

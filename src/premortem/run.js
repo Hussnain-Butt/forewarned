@@ -16,7 +16,8 @@ export const isRunInProgress = (status, now) => Boolean(status && ['queued', 'ru
 // Returns { runId, status: 'started' | 'already-running' } or { error } (a message for the user).
 // `accountId` must come from the Forge context of the caller, never from agent inputs.
 export async function startRun({ port, kvs, queue, epicKey: requestedKey, accountId, now, newId }) {
-  if (!ISSUE_KEY.test(requestedKey ?? '') || !accountId) return { error: 'No valid epic key was given.' };
+  if (!ISSUE_KEY.test(requestedKey ?? '')) return { error: 'No valid epic key was given.' };
+  if (!accountId) return { error: "Forewarned couldn't tell who is asking, so it can't start a run." };
   let issue;
   try {
     issue = await port.issue(requestedKey, ['issuetype']);
@@ -36,8 +37,16 @@ export async function startRun({ port, kvs, queue, epicKey: requestedKey, accoun
 
   // The status is written before the push, so a second click finds the run (AC 2); the queue's
   // concurrency key also keeps two events for one epic from running at the same time.
+  // The concurrency key uses only letters, digits and dashes, like queue names.
   const runId = newId();
-  await writeRunStatus(kvs, epicKey, { runId, status: 'queued', step: null, startedAt: new Date(now()).toISOString(), finishedAt: null, error: null });
-  await queue.push({ body: { runId, epicKey, accountId }, concurrency: { key: `run:${epicKey}`, limit: 1 } });
+  const startedAt = new Date(now()).toISOString();
+  await writeRunStatus(kvs, epicKey, { runId, status: 'queued', step: null, startedAt, finishedAt: null, error: null });
+  try {
+    await queue.push({ body: { runId, epicKey, accountId }, concurrency: { key: `run-${epicKey}`, limit: 1 } });
+  } catch (error) {
+    // Without this, the epic would show a run "in progress" that never started.
+    await writeRunStatus(kvs, epicKey, { runId, status: 'failed', step: null, startedAt, finishedAt: startedAt, error: "Forewarned couldn't start the run. Try again in a minute." });
+    throw error;
+  }
   return { runId, status: 'started' };
 }
