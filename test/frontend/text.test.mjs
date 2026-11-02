@@ -58,6 +58,20 @@ test('chips', () => {
   assert.equal(both.chips.filter((c) => c.key === 'CHK-7').length, 1, 'a work item linked twice is one chip');
 });
 
+// The demo clicks "Wallet top-up": the example's work items come before the base rate's comparison
+// epics, so they are among the 4 chips shown first.
+test('chips list the specific work items before the comparison epics of a base rate', () => {
+  const items = new Map([
+    ['E16', { id: 'E16', baseRate: true, fact: 'f16', links: ['CHK-10', 'CHK-9', 'CHK-7', 'CHK-4', 'CHK-1'].map((key) => ({ key, summary: key, url: key })) }],
+    ['E15', { id: 'E15', baseRate: false, fact: 'f15', links: [{ key: 'PLT-31', summary: 'Refund', url: 'p31' }, { key: 'CHK-143', summary: 'Refund page', url: 'c143' }] }],
+    ['E17', { id: 'E17', baseRate: false, fact: 'f17', links: [{ key: 'CHK-7', summary: 'Wallet top-up', url: 'u7' }, { key: 'CHK-85', summary: 'Top up', url: 'c85' }] }],
+  ]);
+  const { chips, facts } = cardParts({ explanation: 'x', evidenceIds: ['E15', 'E16', 'E17'] }, items, 'CHK-12');
+  assert.deepEqual(chips.map((c) => c.key), ['PLT-31', 'CHK-143', 'CHK-7', 'CHK-85', 'CHK-10', 'CHK-9', 'CHK-4', 'CHK-1']);
+  assert.equal(chips[2].label, 'CHK-7 Wallet top-up');
+  assert.deepEqual(facts.map((f) => f.id), ['E15', 'E16', 'E17'], 'the facts keep the cited order');
+});
+
 test('the base-rate line and an explanation without it', () => {
   const rule = { explanation: '5 of 6 comparable epics finished late. Nothing in this plan accounts for that.', baseRateFact: '5 of 6 comparable epics finished late.', evidenceIds: ['E1'] };
   assert.deepEqual(cardParts(rule, evidence, 'CHK-12').baseRateLine, '5 of 6 comparable epics finished late.');

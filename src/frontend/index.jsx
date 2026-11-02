@@ -168,17 +168,6 @@ const App = () => {
   const { report, canRun } = panel;
   return (
     <Stack space="space.200">
-      {run?.failed ? (
-        <SectionMessage appearance="error" actions={canRun ? <SectionMessageAction onClick={startRun}>Try again</SectionMessageAction> : undefined}>
-          <Text>{run.failed}</Text>
-        </SectionMessage>
-      ) : null}
-      {run?.timedOut ? (
-        <SectionMessage appearance="warning">
-          <Text>The run is taking longer than 5 minutes. Refresh later to see the result.</Text>
-        </SectionMessage>
-      ) : null}
-      {running ? <RunSteps status={run.status} slow={run.slow} /> : null}
       {!report && !running ? (
         <Stack space="space.100">
           <Text>Imagine this epic has already failed. Forewarned finds the most likely reasons in your team&apos;s Jira history and links the proof.</Text>
@@ -208,6 +197,18 @@ const App = () => {
       {canRun ? null : (
         <Text color="color.text.subtle">You need permission to edit this epic to run a pre-mortem. Ask a space admin.</Text>
       )}
+      {/* The run's progress and outcome sit next to the button that started it. */}
+      {run?.failed ? (
+        <SectionMessage appearance="error" actions={canRun ? <SectionMessageAction onClick={startRun}>Try again</SectionMessageAction> : undefined}>
+          <Text>{run.failed}</Text>
+        </SectionMessage>
+      ) : null}
+      {run?.timedOut ? (
+        <SectionMessage appearance="warning">
+          <Text>The run is taking longer than 5 minutes. Refresh later to see the result.</Text>
+        </SectionMessage>
+      ) : null}
+      {running ? <RunSteps status={run.status} slow={run.slow} /> : null}
       <Inline space="space.100" shouldWrap>
         <Button appearance={report ? 'default' : 'primary'} onClick={startRun} isDisabled={running || !canRun}>
           {report ? 'Re-run' : 'Run pre-mortem'}

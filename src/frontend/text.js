@@ -58,13 +58,16 @@ export function likelihoodLozenge(level) {
 }
 
 // AC 9–11: what one reason card shows. `evidenceById` is a Map of the reader's evidence items; the
-// epic itself is never a chip, and a work item linked by several cited items is one chip.
+// epic itself is never a chip, and a work item linked by several cited items is one chip. The
+// specific work items come first and a base rate's comparison epics last, so the 4 chips shown
+// first are the ones the reason is about.
 export function cardParts(reason, evidenceById, epicKey) {
   const cited = (reason.evidenceIds || []).map((id) => evidenceById.get(id)).filter(Boolean);
   const baseRateLine = reason.baseRateFact ?? cited.find((item) => item.baseRate)?.fact ?? NO_BASE_RATE;
   const rest = (reason.explanation || '').replace(baseRateLine, '').replace(/\s{2,}/g, ' ').trim();
   const chips = [];
-  for (const link of cited.flatMap((item) => item.links || [])) {
+  const specificFirst = [...cited.filter((item) => !item.baseRate), ...cited.filter((item) => item.baseRate)];
+  for (const link of specificFirst.flatMap((item) => item.links || [])) {
     if (link.key === epicKey || chips.some((chip) => chip.key === link.key)) continue;
     chips.push({ key: link.key, label: `${link.key} ${cut(link.summary, CHIP_SUMMARY_CHARS)}`, url: link.url, name: `Open ${link.key}, ${link.summary}, in a new tab` });
   }
