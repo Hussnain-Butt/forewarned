@@ -1,13 +1,13 @@
-// The pre-mortem report, version 2 (story 003 AC 23–25), stored in the entity property
-// `forewarned-premortem` on the epic. It holds the rule-based reasons of the latest run and, when
-// the agent has saved one, its validated write-up; only validated fields are ever stored (AC 21).
+// The pre-mortem report, version 2 (story 003 AC 23–25), stored in Forge KVS next to its pack
+// (store.js). It holds the rule-based reasons of the latest run and, when the agent has saved one,
+// its validated write-up; only validated fields are ever stored (AC 21).
 
 export const MAX_REPORT_BYTES = 24000;
 const MIN_COMPARABLE = 3;
 
 const iso = (ms) => new Date(ms).toISOString();
 
-// The entity property limit is 32,768 bytes; reports stay under 24,000 like the pack (AC 25).
+// Reports stay under 24,000 bytes like the pack (AC 25), so the stored pre-mortem stays small.
 function checked(report) {
   if (Buffer.byteLength(JSON.stringify(report), 'utf8') > MAX_REPORT_BYTES) {
     throw new Error('The pre-mortem report is larger than 24,000 bytes.');
@@ -35,7 +35,8 @@ export function buildReport({ pack, ruleReasons, previous, accountId, now }) {
   });
 }
 
-// The report with a new agent write-up (validated reasons only); everything else stays.
-export function withAgentWriteUp(report, { reasons, droppedByRule, packId, now }) {
-  return checked({ ...report, agent: { reasons, savedAt: iso(now), packId, droppedByRule, stale: packId !== report.packId } });
+// The report with a new agent write-up (validated reasons only) and who saved it; everything
+// else stays.
+export function withAgentWriteUp(report, { reasons, droppedByRule, packId, savedBy, now }) {
+  return checked({ ...report, agent: { reasons, savedAt: iso(now), savedBy, packId, droppedByRule, stale: packId !== report.packId } });
 }

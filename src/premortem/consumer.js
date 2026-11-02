@@ -1,20 +1,18 @@
 // Queue consumer of the pre-mortem run (story 003 AC 3, 6–8). For one queued event it re-checks
 // the epic, builds the evidence pack (story 002) as the user who started the run, derives the
-// rule-based reasons (story 004), validates them, and writes the pack and the report to the
-// epic. It never throws back to the queue: Forge would retry a failing event for up to 24 hours.
+// rule-based reasons (story 004), validates them, and stores the pack and the report in Forge KVS.
+// It never throws back to the queue: Forge would retry a failing event for up to 24 hours.
 
 import api from '@forge/api';
 import { kvs } from '@forge/kvs';
 import { forgeSenders } from '../engine/forge-jira.js';
 import { buildEvidencePack } from '../engine/index.js';
-import { createJira } from '../engine/jira.js';
 import { buildReport } from './report.js';
 import { ruleBasedReasons } from './rules.js';
-import { EVIDENCE_PROPERTY, REPORT_PROPERTY, readProperty, readRunStatus, writeProperty, writeRunStatus } from './store.js';
+import { readPremortem, readRunStatus, writePremortem, writeRunStatus } from './store.js';
 import { validateReasons } from './validator.js';
 
 const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
-const WRITE_BUDGET_MS = 30000;
 
 // A failure with a message that is safe to show the user, and a short code for the log.
 class RunFailure extends Error {
@@ -66,7 +64,7 @@ export async function handleRun({ event, principal, senders, kvs: store, now = D
 
   try {
     await showStep('comparable epics');
-    const result = await buildEvidencePack({ senders, epicKey, accountId, now, onStep: showStep }).catch((error) => { throw new RunFailure(error.name ?? 'Error', `Forewarned couldn't build the evidence for ${epicKey}. Try again in a minute.`); });
+    const result = await buildEvidencePack({ senders, epicKey, accountId, now, onStep: showStep });
     if (result.error) throw new RunFailure('not-an-epic', `${epicKey} is no longer an epic or no longer exists.`);
     const { pack } = result;
 
@@ -76,12 +74,10 @@ export async function handleRun({ event, principal, senders, kvs: store, now = D
     const { kept, dropped } = validateReasons(ruleBasedReasons(pack), pack, { keep: ['ruleId', 'baseRateFact'] });
     for (const { code } of dropped) log(`Rule-based reason dropped: ${code}`);
 
-    const port = createJira(senders, { deadline: now() + WRITE_BUDGET_MS, now });
     try {
-      const previous = await readProperty(port, epicKey, REPORT_PROPERTY);
+      const previous = (await readPremortem(store, epicKey))?.report;
       const report = buildReport({ pack, ruleReasons: kept, previous, accountId, now: now() });
-      await writeProperty(port, epicKey, EVIDENCE_PROPERTY, pack);
-      await writeProperty(port, epicKey, REPORT_PROPERTY, report);
+      await writePremortem(store, epicKey, { pack, report });
     } catch {
       throw new RunFailure('save', `Forewarned couldn't save the report on ${epicKey}.`);
     }

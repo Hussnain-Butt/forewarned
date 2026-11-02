@@ -64,6 +64,19 @@ test('rankPeople puts the most open work in this epic first and includes the epi
   assert.ok(ranked.every((r, i) => !i || ranked[i - 1].openInEpic >= r.openInEpic));
 });
 
+// The reader filter (src/premortem/visibility.js) checks only links, so the fact may name only
+// linked epics: the 10th and later used to be named without being linked.
+test('a person in more other epics than the links hold: the fact names only the linked ones', () => {
+  const snapshot = seedSnapshot();
+  const others = Array.from({ length: 12 }, (_, i) => ({ key: `OPS-${i + 1}`, summary: `Other epic ${i + 1}` }));
+  const people = snapshot.epic.people.map((p, i) => (i ? p : { ...p, otherEpics: others }));
+  const draft = loadSignal({ ...snapshot, epic: { ...snapshot.epic, people } }).drafts[0];
+  assert.match(draft.fact, / also has open work items in 12 other epics in progress, including OPS-1, OPS-2, .*, OPS-9\.$/);
+  const linked = new Set(draft.links.map((l) => l.key));
+  assert.ok((draft.fact.match(/OPS-\d+/g) ?? []).every((key) => linked.has(key)), draft.fact);
+  assert.equal(draft.numbers.otherEpicsInProgress, 12);
+});
+
 test('one other epic is "1 other epic", and big counts get commas', () => {
   const snapshot = seedSnapshot();
   const people = snapshot.epic.people.map((p, i) => (i ? p : { ...p, openTotal: 1234, otherEpics: p.otherEpics.slice(0, 1) }));

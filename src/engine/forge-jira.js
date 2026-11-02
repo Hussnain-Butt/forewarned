@@ -26,13 +26,7 @@ export function forgeSenders(jira = api.asUser()) {
     count: (jql) => jira.requestJira(route`/rest/api/3/search/approximate-count`, post({ jql })),
     changelogs: (body) => jira.requestJira(route`/rest/api/3/changelog/bulkfetch`, post(body)),
     bulkIssues: (body) => jira.requestJira(route`/rest/api/3/issue/bulkfetch`, post(body)),
-    // Story 003: the pack and the report are entity properties on the epic.
-    issueProperty: (key, name) => jira.requestJira(route`/rest/api/3/issue/${key}/properties/${name}`, GET),
-    setIssueProperty: (key, name, value) => jira.requestJira(route`/rest/api/3/issue/${key}/properties/${name}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(value),
-    }),
-    myPermissions: (key) => jira.requestJira(route`/rest/api/3/mypermissions?issueKey=${key}&permissions=EDIT_ISSUES`, GET),
+    // Story 003: may the user change the epic's pre-mortem (start a run, save a write-up)?
+    myPermissions:(key) => jira.requestJira(route`/rest/api/3/mypermissions?issueKey=${key}&permissions=EDIT_ISSUES`, GET),
   };
 }

@@ -21,8 +21,8 @@ resolver.define('getPremortem', async ({ context }) => {
   }
   try {
     const port = createJira(forgeSenders(), { deadline: Date.now() + START_BUDGET_MS });
-    const { report } = await getPremortemAction({ deps: { port }, epicKey: issueKey, readerAccountId: context.accountId });
-    return { issueKey, report };
+    const { report, error } = await getPremortemAction({ deps: { port, kvs }, epicKey: issueKey, readerAccountId: context.accountId });
+    return { issueKey, report, error };
   } catch (error) {
     console.error('getPremortem failed:', error instanceof Error ? error.name : 'Unknown error');
     return { issueKey, error: "The pre-mortem couldn't be loaded. Try Refresh in a minute." };
@@ -43,7 +43,7 @@ resolver.define('startRun', async ({ context }) => {
       newId: randomUUID,
     });
   } catch (error) {
-    console.error('startRun failed:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('startRun failed:', error instanceof Error ? error.name : 'Unknown error');
     return { error: "Forewarned couldn't start the run. Try again in a minute." };
   }
 });

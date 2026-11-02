@@ -1,6 +1,6 @@
 // The evidence pack (story 002 AC 26–31): every signal's facts, numbered E1…En, with links, the
-// comparison set and the checks, kept within 25 items and 24,000 bytes so it fits in a Jira
-// entity property (limit 32,768 bytes, proven in M0f).
+// comparison set and the checks, kept within 25 items and 24,000 bytes so the stored pre-mortem
+// stays small and the agent can read the whole pack.
 
 import { createHash } from 'node:crypto';
 import { selectComparable } from './comparable.js';

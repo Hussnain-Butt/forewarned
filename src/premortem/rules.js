@@ -3,7 +3,8 @@
 // and `about` fields, never their fact text) and quotes the facts it cites, so every reason passes
 // the validator (story 003) unchanged.
 
-import { counted, shorten } from '../engine/format.js';
+import { counted } from '../engine/format.js';
+import { cut } from './validator.js';
 
 // Thresholds (story 004 AC 4). Change one only when a failure shows on at least two of: the seed,
 // PLAT-1 and the dogfood spaces (open question 1), and log the reason here.
@@ -110,7 +111,7 @@ function loadReason(ofType, subject) {
 // No padding: when no rule fires the list is empty (AC 11).
 export function ruleBasedReasons(pack) {
   const ofType = (type) => pack.evidence.filter((item) => item.type === type);
-  const subject = shorten(pack.epic.summary, SUBJECT_CHARS);
+  const subject = cut(pack.epic.summary, SUBJECT_CHARS);
   const reasons = [
     ...dependencyReasons(pack, ofType, subject),
     slipReason(ofType),

@@ -47,7 +47,9 @@ const Report = ({ report }) => {
       {agent ? (
         <Stack space="space.150">
           <Heading size="small">Pre-mortem from the Forewarned agent</Heading>
-          {agent.stale ? <SectionMessage appearance="warning">Based on an older evidence pack. Ask the agent to write it again.</SectionMessage> : null}
+          {agent.stale ? (
+            <SectionMessage appearance="warning">The agent wrote this pre-mortem on older evidence, so it isn&apos;t shown. Ask the agent to write it again.</SectionMessage>
+          ) : null}
           {agent.reasons.map((reason) => <Reason key={reason.title} reason={reason} />)}
         </Stack>
       ) : null}

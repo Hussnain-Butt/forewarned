@@ -8,9 +8,9 @@ import { readVisible } from '../engine/fetch.js';
 const HIDDEN_NOTE = "Some evidence is hidden because it names work items you can't see.";
 
 // The IDs of the pack's evidence items the reader can't fully see. The builder sees everything,
-// so their reads cost no request.
+// so their reads cost no request; a reader with no account ID is checked as the user in session.
 export async function hiddenEvidenceIds(port, pack, readerAccountId) {
-  if (!pack || !readerAccountId || readerAccountId === pack.builtFor) return new Set();
+  if (!pack || (readerAccountId && readerAccountId === pack.builtFor)) return new Set();
   const keys = [...new Set(pack.evidence.flatMap((item) => item.links.map((link) => link.key)))];
   const visible = new Set((await readVisible(port, keys, ['summary'])).map((issue) => issue.key));
   return new Set(pack.evidence.filter((item) => item.links.some((link) => !visible.has(link.key))).map((item) => item.id));
@@ -22,14 +22,20 @@ export function packForReader(pack, hidden) {
   return { ...pack, evidence: pack.evidence.filter((item) => !hidden.has(item.id)), notes: [...pack.notes, HIDDEN_NOTE] };
 }
 
-// The report without the reasons that cite hidden evidence, rule-based or the agent's.
+// The report without the reasons that cite hidden evidence, rule-based or the agent's. An agent
+// write-up from an older pack cites that pack's evidence IDs, which the stored pack numbers
+// differently, so it can't be checked for anyone: no reader gets its reasons, the builder included.
 export function reportForReader(report, hidden) {
-  if (!hidden.size || !report) return report;
+  if (!report) return report;
   const visibleReasons = (reasons) => reasons.filter((reason) => !reason.evidenceIds.some((id) => hidden.has(id)));
-  return {
+  const agent = report.agent && (report.agent.packId === report.packId ? report.agent : { ...report.agent, reasons: [], stale: true });
+  const ruleReasons = visibleReasons(report.ruleBased.reasons);
+  const agentReasons = agent ? visibleReasons(agent.reasons) : [];
+  const shown = {
     ...report,
-    ruleBased: { ...report.ruleBased, reasons: visibleReasons(report.ruleBased.reasons) },
-    agent: report.agent ? { ...report.agent, reasons: visibleReasons(report.agent.reasons) } : null,
-    hiddenForReader: true,
+    ruleBased: { ...report.ruleBased, reasons: ruleReasons },
+    agent: agent && { ...agent, reasons: agentReasons },
   };
+  const removed = ruleReasons.length < report.ruleBased.reasons.length || agentReasons.length < (agent?.reasons.length ?? 0);
+  return removed ? { ...shown, hiddenForReader: true } : shown;
 }

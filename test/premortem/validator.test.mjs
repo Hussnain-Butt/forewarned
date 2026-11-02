@@ -82,6 +82,13 @@ test('keys rule: every work item key must be in the cited facts or links (AC 13)
   assert.equal(droppedCode(reason({ explanation: 'CHK-99 finished 42 days late.', evidenceIds: ['E2'], likelihood: 'Medium', mitigation: 'Add buffer.' })), 'unknown-key');
 });
 
+// Stored write-ups are shown to other users and given to their agents, so they may not carry links.
+test('a reason with a web address or a markdown link is dropped', () => {
+  for (const mitigation of ['See https://example.com for the fix.', 'Read www.example.com first.', 'Read [the plan](x) first.']) {
+    assert.equal(droppedCode(reason({ mitigation })), 'link', mitigation);
+  }
+});
+
 test('likelihood cap: High without a cited base rate becomes Medium and is kept (AC 14)', () => {
   const kept = keptOne(reason({ explanation: 'CHK-7 finished 42 days late.', evidenceIds: ['E2'], mitigation: 'Add buffer.' }));
   assert.equal(kept.likelihood, 'Medium');

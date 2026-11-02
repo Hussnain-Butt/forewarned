@@ -10,7 +10,7 @@ import { seedSnapshot } from '../engine/seed-snapshot.mjs';
 const NOW = Date.parse('2026-11-02T08:00:00.000Z');
 const pack = computePack(seedSnapshot());
 const ruleReasons = ruleBasedReasons(pack);
-const agentPart = { reasons: [ruleReasons[0]], droppedByRule: { 'unknown-number': 1 }, packId: pack.packId, now: NOW };
+const agentPart = { reasons: [ruleReasons[0]], droppedByRule: { 'unknown-number': 1 }, packId: pack.packId, savedBy: 'acc-1', now: NOW };
 
 test('a report holds the pack ID, the checks, the rule-based reasons and who ran it', () => {
   const report = buildReport({ pack, ruleReasons, previous: null, accountId: 'acc-1', now: NOW });
@@ -47,7 +47,7 @@ test('withAgentWriteUp replaces only the agent part', () => {
   const report = buildReport({ pack, ruleReasons, previous: null, accountId: 'a', now: NOW });
   const next = withAgentWriteUp(report, agentPart);
   assert.deepEqual({ ...next, agent: null }, report);
-  assert.deepEqual(next.agent, { reasons: [ruleReasons[0]], savedAt: '2026-11-02T08:00:00.000Z', packId: pack.packId, droppedByRule: { 'unknown-number': 1 }, stale: false });
+  assert.deepEqual(next.agent, { reasons: [ruleReasons[0]], savedAt: '2026-11-02T08:00:00.000Z', savedBy: 'acc-1', packId: pack.packId, droppedByRule: { 'unknown-number': 1 }, stale: false });
 });
 
 test('a report over 24,000 bytes is refused (AC 25)', () => {

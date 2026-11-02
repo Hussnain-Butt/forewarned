@@ -65,7 +65,7 @@ modules:
       function: submit-premortem-fn
       actionVerb: UPDATE
       description: |
-        Saves pre-mortem reasons on a Jira epic. Each reason is checked against the stored evidence: reasons that cite no valid evidence ID, or quote numbers or work item keys that aren't in it, are dropped.
+        Saves pre-mortem reasons on a Jira epic. Each reason is checked against the stored evidence: reasons that cite no valid evidence ID, quote numbers or work item keys that aren't in it, or contain links, are dropped.
       inputs:
         epicKey:
           title: Epic key
@@ -117,13 +117,14 @@ resources:
   - key: main
     path: src/frontend/index.jsx
 permissions:
-  # The queue consumer reads Jira and writes the report as the user who started the run, through
-  # offline user impersonation, so the Jira scopes allow it (story 003; story 002 open question 1).
+  # The queue consumer reads Jira as the user who started the run, through offline user
+  # impersonation (story 003; story 002 open question 1). It writes only to Forge KVS (storage:app),
+  # so writing to Jira needs no impersonation; write:jira-work is for the mitigation work items
+  # (story 006) and the Confluence scopes for the pre-mortem page (story 007).
   scopes:
     read:jira-work:
       allowImpersonation: true
-    write:jira-work:
-      allowImpersonation: true
+    write:jira-work: {}
     storage:app: {}
     read:space:confluence: {}
     write:page:confluence: {}

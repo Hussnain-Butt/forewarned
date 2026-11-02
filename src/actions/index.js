@@ -55,9 +55,10 @@ export const runPremortem = action('run-premortem', ({ deps, epicKey, context })
 export const getEvidence = action('get-evidence', ({ deps, epicKey, context }) => (
   getEvidenceAction({ deps, epicKey, readerAccountId: context?.principal?.accountId })));
 
-export const submitPremortem = action('submit-premortem', ({ deps, epicKey, payload }) => submitPremortemAction({
+export const submitPremortem = action('submit-premortem', ({ deps, epicKey, payload, context }) => submitPremortemAction({
   deps,
   epicKey,
+  accountId: context?.principal?.accountId,
   reasonsJson: payload.reasonsJson,
   packId: typeof payload.packId === 'string' && payload.packId.trim() ? payload.packId.trim() : undefined,
 }));

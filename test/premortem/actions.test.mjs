@@ -1,16 +1,17 @@
 // The Rovo actions (story 003 AC 1, 19–22): start a run, read the stored pack, save a validated
-// write-up against the stored pack, read the report.
+// write-up against the stored pack, read the report. Every action first reads the epic as the user.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { getEvidenceAction, getPremortemAction, runPremortemAction, submitPremortemAction } from '../../src/premortem/actions.js';
 import { handleRun } from '../../src/premortem/consumer.js';
-import { EVIDENCE_PROPERTY, REPORT_PROPERTY } from '../../src/premortem/store.js';
 import { keyOf } from '../engine/seed-snapshot.mjs';
-import { fakeKvs, fakeQueue, fakeSenders, portOf } from './fakes.mjs';
+import { fakeKvs, fakeQueue, fakeSenders, portOf, storedOf } from './fakes.mjs';
 
 const EPIC = keyOf('ll-chk-e11');
+const BLOCKER = keyOf('un-plt-e03-07');
 const NOW = Date.parse('2026-11-02T08:00:00.000Z');
+const NOT_VISIBLE = { error: `${EPIC} doesn't exist, or you don't have permission to see it.` };
 
 async function setup({ withRun = true, senderOptions } = {}) {
   const fake = fakeSenders(senderOptions);
@@ -18,12 +19,12 @@ async function setup({ withRun = true, senderOptions } = {}) {
   const logs = [];
   const deps = { port: portOf(fake.senders), kvs, queue: fakeQueue(kvs), now: () => NOW, newId: () => 'r1', log: (line) => logs.push(line), logs };
   if (withRun) {
-    await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' });
-    await handleRun({ event: { body: { runId: 'r1', epicKey: EPIC, accountId: 'acc-1' } }, senders: fake.senders, kvs, now: () => NOW, log: () => {} });
+    const builder = fakeSenders();
+    await runPremortemAction({ deps: { ...deps, port: portOf(builder.senders) }, epicKey: EPIC, accountId: 'acc-1' });
+    await handleRun({ event: { body: { runId: 'r1', epicKey: EPIC, accountId: 'acc-1' } }, senders: builder.senders, kvs, now: () => NOW, log: () => {} });
   }
-  return { deps, fake };
+  return { deps, kvs };
 }
-const packOf = (fake) => fake.properties.get(`${EPIC}/${EVIDENCE_PROPERTY}`);
 const good = (pack) => {
   const slip = pack.evidence.find((e) => e.type === 'slip-base-rate');
   return {
@@ -48,69 +49,90 @@ test('run-premortem starts a run, and says so when one is already running', asyn
 
 test('get-evidence returns the stored pack, or explains why there is none', async () => {
   const empty = await setup({ withRun: false });
-  assert.deepEqual(await getEvidenceAction({ deps: empty.deps, epicKey: EPIC }), { error: `No evidence found for ${EPIC}. Call run-premortem first.` });
+  assert.deepEqual(await getEvidenceAction({ deps: empty.deps, epicKey: EPIC, readerAccountId: 'acc-1' }), { error: `No evidence found for ${EPIC}. Call run-premortem first.` });
   await runPremortemAction({ deps: empty.deps, epicKey: EPIC, accountId: 'acc-1' });
-  assert.deepEqual(await getEvidenceAction({ deps: empty.deps, epicKey: EPIC }), { error: 'A new evidence run is in progress. Wait a moment, then call get-evidence again.' });
-  const { deps, fake } = await setup();
-  assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC }), { epicKey: EPIC, ...packOf(fake) });
+  assert.deepEqual(await getEvidenceAction({ deps: empty.deps, epicKey: EPIC, readerAccountId: 'acc-1' }), { error: 'A new evidence run is in progress. Wait a moment, then call get-evidence again.' });
+  const { deps, kvs } = await setup();
+  assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC, readerAccountId: 'acc-1' }), { epicKey: EPIC, ...storedOf(kvs, EPIC).pack });
+});
+
+// Without this the agent's prompt sends it back to run-premortem, which fails the same way.
+test('get-evidence passes on why the last run failed when there is no evidence', async () => {
+  const { deps, kvs } = await setup({ withRun: false });
+  await kvs.set(`run:${EPIC}`, { runId: 'r1', status: 'failed', startedAt: new Date(NOW).toISOString(), error: `Forewarned couldn't save the report on ${EPIC}.` });
+  assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC, readerAccountId: 'acc-1' }), { error: `Forewarned couldn't save the report on ${EPIC}.` });
+});
+
+// Someone who can't see the epic learns nothing, not even whether a run is in progress.
+test('every action refuses an epic the user can\'t see, before reading anything stored', async () => {
+  const { deps } = await setup({ senderOptions: { hidden: [EPIC] } });
+  await deps.kvs.set(`run:${EPIC}`, { runId: 'r2', status: 'running', startedAt: new Date(NOW).toISOString() });
+  assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC, readerAccountId: 'acc-2' }), NOT_VISIBLE);
+  assert.deepEqual(await getPremortemAction({ deps, epicKey: EPIC, readerAccountId: 'acc-2' }), NOT_VISIBLE);
+  assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-2', reasonsJson: '[]' }), { saved: false, ...NOT_VISIBLE });
 });
 
 test('submit-premortem validates against the stored pack and saves only validated fields (AC 19, 21–22)', async () => {
-  const { deps, fake } = await setup();
-  const pack = packOf(fake);
+  const { deps, kvs } = await setup();
+  const { pack } = storedOf(kvs, EPIC);
   const invented = { ...good(pack), title: 'Invented', explanation: 'Epics were 99 days late.' };
   const missing = { ...good(pack), title: 'Missing evidence', evidenceIds: ['E99'] };
-  const result = await submitPremortemAction({ deps, epicKey: EPIC, packId: pack.packId, reasonsJson: JSON.stringify([good(pack), invented, missing]) });
+  const result = await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1', packId: pack.packId, reasonsJson: JSON.stringify([good(pack), invented, missing]) });
   assert.deepEqual(result, {
     saved: true, epicKey: EPIC, savedReasons: 1,
     dropped: [{ title: 'Invented', code: 'unknown-number' }, { title: 'Missing evidence', code: 'no-history-evidence' }],
   });
-  const report = fake.properties.get(`${EPIC}/${REPORT_PROPERTY}`);
+  const { report, pack: kept } = storedOf(kvs, EPIC);
+  assert.deepEqual(kept, pack, 'the pack is stored again unchanged');
   assert.deepEqual(Object.keys(report.agent.reasons[0]).sort(), ['evidenceIds', 'explanation', 'likelihood', 'mitigation', 'title']);
   assert.equal(report.agent.reasons[0].likelihood, 'High');
   assert.deepEqual(report.agent.droppedByRule, { 'unknown-number': 1, 'no-history-evidence': 1 });
   assert.equal(report.agent.stale, false);
+  assert.equal(report.agent.savedBy, 'acc-1');
   assert.ok(report.ruleBased.reasons.length, 'the rule-based part is kept');
   assert.deepEqual(deps.logs, ['Reason dropped: unknown-number', 'Reason dropped: no-history-evidence']);
 });
 
 test('submit-premortem refuses a changed pack, a run in progress, no evidence and no surviving reason (AC 19–20)', async () => {
-  const { deps, fake } = await setup();
-  const pack = packOf(fake);
-  assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, packId: 'old', reasonsJson: JSON.stringify([good(pack)]) }),
+  const { deps, kvs } = await setup();
+  const { pack } = storedOf(kvs, EPIC);
+  const submit = (fields) => submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1', ...fields });
+  assert.deepEqual(await submit({ packId: 'old', reasonsJson: JSON.stringify([good(pack)]) }),
     { saved: false, error: 'The evidence changed since you read it. Call get-evidence again.' });
-  const none = await submitPremortemAction({ deps, epicKey: EPIC, packId: pack.packId, reasonsJson: JSON.stringify([{ ...good(pack), evidenceIds: [] }]) });
+  const none = await submit({ packId: pack.packId, reasonsJson: JSON.stringify([{ ...good(pack), evidenceIds: [] }]) });
   assert.equal(none.saved, false);
   assert.deepEqual(none.dropped, [{ title: 'History says late', code: 'no-history-evidence' }]);
-  assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, reasonsJson: '[{' }), { saved: false, error: 'reasonsJson is not valid JSON.' });
+  assert.deepEqual(await submit({ reasonsJson: '[{' }), { saved: false, error: 'reasonsJson is not valid JSON.' });
   await deps.kvs.set(`run:${EPIC}`, { runId: 'r2', status: 'running', startedAt: new Date(NOW).toISOString() });
-  assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, reasonsJson: JSON.stringify([good(pack)]) }),
+  assert.deepEqual(await submit({ reasonsJson: JSON.stringify([good(pack)]) }),
     { saved: false, error: 'A new evidence run is in progress. Wait a moment, then call get-evidence again.' });
   const empty = await setup({ withRun: false });
-  assert.deepEqual(await submitPremortemAction({ deps: empty.deps, epicKey: EPIC, reasonsJson: '[]' }),
+  assert.deepEqual(await submitPremortemAction({ deps: empty.deps, epicKey: EPIC, accountId: 'acc-1', reasonsJson: '[]' }),
     { saved: false, error: `No evidence found for ${EPIC}. Call run-premortem first.` });
 });
 
-test('get-premortem returns the version 2 report, or says none is saved yet', async () => {
-  const { deps, fake } = await setup();
-  assert.deepEqual(await getPremortemAction({ deps, epicKey: EPIC }), { epicKey: EPIC, report: fake.properties.get(`${EPIC}/${REPORT_PROPERTY}`) });
-  const empty = await setup({ withRun: false });
-  assert.deepEqual(await getPremortemAction({ deps: empty.deps, epicKey: EPIC }), { epicKey: EPIC, report: null, message: `No pre-mortem has been saved on ${EPIC} yet.` });
-});
-
-test('a pack and report from different runs (a run that half-saved) are refused', async () => {
-  const { deps, fake } = await setup();
-  const pack = packOf(fake);
-  fake.properties.set(`${EPIC}/${EVIDENCE_PROPERTY}`, { ...pack, packId: 'newer-pack' });
-  assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, reasonsJson: JSON.stringify([good(pack)]) }),
-    { saved: false, error: "The last run didn't finish saving. Call run-premortem again." });
-});
-
-test('someone who can view but not edit the epic gets a clear message when saving', async () => {
-  const { deps, fake } = await setup();
-  fake.senders.setIssueProperty = async () => new Response(JSON.stringify({ errorMessages: ['Forbidden'] }), { status: 403 });
-  deps.port = portOf(fake.senders); // the port wraps the senders it was made with
-  const pack = packOf(fake);
-  assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, packId: pack.packId, reasonsJson: JSON.stringify([good(pack)]) }),
+// Jira no longer guards the write (the report isn't on the epic), so the action checks itself.
+test('someone who can view but not edit the epic can\'t save, and nothing changes', async () => {
+  const { deps, kvs } = await setup({ senderOptions: { canEdit: false } });
+  const before = storedOf(kvs, EPIC);
+  assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-2', packId: before.pack.packId, reasonsJson: JSON.stringify([good(before.pack)]) }),
     { saved: false, error: `You can view ${EPIC} but can't edit it, so the pre-mortem can't be saved.` });
+  assert.deepEqual(storedOf(kvs, EPIC), before);
+});
+
+// The drop codes would otherwise tell a reader which numbers and keys hidden evidence holds.
+test('submit-premortem checks the reasons against the evidence the submitter can see', async () => {
+  const { deps, kvs } = await setup({ senderOptions: { hidden: [BLOCKER] } });
+  const { pack } = storedOf(kvs, EPIC);
+  const blocker = pack.evidence.find((e) => e.type === 'open-blocker');
+  const result = await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-2', packId: pack.packId,
+    reasonsJson: JSON.stringify([good(pack), { title: 'Blocked', likelihood: 'Medium', explanation: blocker.fact, evidenceIds: [blocker.id], mitigation: 'Chase it.' }]) });
+  assert.deepEqual(result.dropped, [{ title: 'Blocked', code: 'no-history-evidence' }]);
+});
+
+test('get-premortem returns the version 2 report, or says none is saved yet', async () => {
+  const { deps, kvs } = await setup();
+  assert.deepEqual(await getPremortemAction({ deps, epicKey: EPIC, readerAccountId: 'acc-1' }), { epicKey: EPIC, report: storedOf(kvs, EPIC).report });
+  const empty = await setup({ withRun: false });
+  assert.deepEqual(await getPremortemAction({ deps: empty.deps, epicKey: EPIC, readerAccountId: 'acc-1' }), { epicKey: EPIC, report: null, message: `No pre-mortem has been saved on ${EPIC} yet.` });
 });

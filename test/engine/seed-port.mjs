@@ -3,8 +3,8 @@
 // Records may carry test-only fields: `person` (overrides the role's user), `noResolution` (a Done
 // work item without a resolution date), `extraMoves` ([{ day, status }] added to its history) and
 // `rawCreated` (the created value as sent). Options: `statusIds: false` sends history items without
-// status IDs (as an import might), `hidden` keys are left out of bulk fetches (spaces the user can't
-// see), `failCountFor` makes that account's count fail with 400, `failCount(jql)` makes matching
+// status IDs (as an import might), `hidden` keys are left out of bulk fetches and give 404 on a
+// single read (spaces the user can't see), `failCountFor` makes that account's count fail with 400, `failCount(jql)` makes matching
 // counts fail with 500, and `aliases` maps old keys.
 
 import { join } from 'node:path';
@@ -123,7 +123,7 @@ export function seedPort({
     statuses: async () => json(Object.values(STATUS)),
     linkTypes: async () => json({ issueLinkTypes: linkTypes }),
     issue: async (key, fields) => {
-      const r = byKey.get(key) ?? records.get(aliases[key]);
+      const r = hidden.includes(key) ? null : byKey.get(key) ?? records.get(aliases[key]);
       return r ? json(issueJson(r, fields)) : json({ errorMessages: ['Issue does not exist'] }, 404);
     },
     // Like Jira, work items the user can't see (or that don't exist) are simply not returned.

@@ -2,7 +2,6 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readProperty, writeProperty } from '../../src/premortem/store.js';
 import { startRun } from '../../src/premortem/run.js';
 import { keyOf } from '../engine/seed-snapshot.mjs';
 import { fakeKvs, fakeQueue, fakeSenders, portOf } from './fakes.mjs';
@@ -51,15 +50,6 @@ test('a run stuck for over 10 minutes, or a finished one, does not block a new r
     assert.equal((await start(deps)).status, 'started');
     assert.equal(deps.queue.pushes.length, 1);
   }
-});
-
-test('entity properties: read gives null when missing, write stores the value', async () => {
-  const { senders, properties } = fakeSenders();
-  const port = portOf(senders);
-  assert.equal(await readProperty(port, EPIC, 'forewarned-evidence'), null);
-  await writeProperty(port, EPIC, 'forewarned-evidence', { packId: 'p1' });
-  assert.deepEqual(properties.get(`${EPIC}/forewarned-evidence`), { packId: 'p1' });
-  assert.deepEqual(await readProperty(port, EPIC, 'forewarned-evidence'), { packId: 'p1' });
 });
 
 test('a failed queue push leaves a "failed" status, not a stuck "queued" one', async () => {

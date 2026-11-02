@@ -1,6 +1,6 @@
 // The validator (story 003 AC 9–18): no reason without evidence. Every reason, from Forewarned's
 // rules or from the Rovo agent, passes through validateReasons before it is stored or shown. It
-// checks only what can be checked mechanically: evidence IDs, numbers and work item keys.
+// checks only what can be checked mechanically: evidence IDs, numbers, work item keys and links.
 
 const MAX_JSON_CHARS = 20000;
 const MAX_INPUT_REASONS = 20;
@@ -17,6 +17,8 @@ const NUMBER = /(?<![\w.])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?!\d)(?!(?:st|nd|
 // Spelled-out numbers count too (open question 2); "one" is left out, it is too common in English.
 const NUMBER_WORDS = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
 const NUMBER_WORD = new RegExp(`\\b(${Object.keys(NUMBER_WORDS).join('|')})\\b`, 'gi');
+// A web address or a markdown link: saved write-ups reach other users and their agents.
+const LINK = /https?:\/\/|www\.|\]\(/i;
 
 // The quantities in a text, normalized ("5,121" → "5121", "86 %" → "86"). Work item keys and
 // evidence IDs are removed first, so "CHK-12" and "E3" are not numbers.
@@ -46,8 +48,9 @@ export function parseReasonsJson(text) {
   return { reasons: parsed };
 }
 
-// Cuts text to max characters at a word boundary, ending with "…" (AC 10).
-function cut(text, max) {
+// Cuts text to max characters at a word boundary, ending with "…" (AC 10), so no number or key is
+// split. The rules cut the epic summary with it too.
+export function cut(text, max) {
   const chars = Array.from(text);
   if (chars.length <= max) return text;
   let kept = chars.slice(0, max - 1).join('');
@@ -68,6 +71,8 @@ function check(input, byId, epic, keep) {
   const mitigation = cut(text(input.mitigation), LIMITS.mitigation);
   if (!mitigation) return { code: 'missing-mitigation', title };
   const explanation = cut(text(input.explanation), LIMITS.explanation);
+  const written = `${title} ${explanation} ${mitigation}`;
+  if (LINK.test(written)) return { code: 'link', title };
 
   // AC 11: only IDs that exist, and at least one history item (team input never counts alone).
   const ids = Array.isArray(input.evidenceIds) ? input.evidenceIds.filter((id) => typeof id === 'string' && byId.has(id)) : [];
@@ -77,7 +82,6 @@ function check(input, byId, epic, keep) {
 
   // AC 12–13: every number and key in the reason must come from what it cites. The epic itself
   // (its key and summary) is the subject of the whole pack, so it is always known.
-  const written = `${title} ${explanation} ${mitigation}`;
   const sources = [epic?.summary, ...cited.flatMap((item) => [item.fact, ...(item.links ?? []).map((l) => l.summary)])];
   const knownNumbers = new Set(sources.flatMap((s) => [...numbersIn(s)]));
   if ([...numbersIn(written)].some((n) => !knownNumbers.has(n))) return { code: 'unknown-number', title };

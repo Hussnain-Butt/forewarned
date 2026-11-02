@@ -49,9 +49,11 @@ export function loadSignal(snapshot) {
     // Search counts can lag behind the read, so the total is never below the work in this epic.
     const openTotal = Math.max(countedTotal, x);
     const others = otherEpics ?? [];
+    // The fact names only the epics it links, because readers are checked against the links.
+    const linked = others.slice(0, MAX_LINKS - 1);
     let fact = `${person.displayName} has ${counted(openTotal, 'open work item')} in total, ${n(x)} of them in this epic (${percent(x, openTotal)}%; ${n(openTotal - x)} elsewhere); the median for the ${counted(people.length, 'person', 'people')} on this epic is ${n(median)}.`;
-    if (others.length) fact += ` ${person.displayName} also has open work items in ${others.length} other ${others.length === 1 ? 'epic' : 'epics'} in progress: ${others.map((e) => e.key).join(', ')}.`;
-    drafts.push(draft('load-person', fact, [{ key: epic.key, summary: epic.summary }, ...others].slice(0, MAX_LINKS), {
+    if (others.length) fact += ` ${person.displayName} also has open work items in ${others.length} other ${others.length === 1 ? 'epic' : 'epics'} in progress${linked.length < others.length ? ', including' : ':'} ${linked.map((e) => e.key).join(', ')}.`;
+    drafts.push(draft('load-person', fact, [{ key: epic.key, summary: epic.summary }, ...linked], {
       openTotal,
       openInEpic: x,
       openElsewhere: openTotal - x,

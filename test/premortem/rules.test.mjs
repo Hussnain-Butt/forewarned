@@ -135,3 +135,16 @@ test('a long epic summary is shortened in titles and mitigations, and the reason
   const { dropped } = validateReasons(reasons, longPack, { keep: ['ruleId', 'baseRateFact'] });
   assert.deepEqual(dropped, []);
 });
+
+// A cut inside "73519" or "PAY-4821" left a partial number or key the validator doesn't know.
+test('a long summary is cut between words, so no number or key is split and every reason passes', () => {
+  const pack = seedPack();
+  for (const word of ['73519', 'PAY-4821']) {
+    const summary = `${'Checkout v2 launch with wallet payments and fraud checks for every market'.padEnd(76, '.')} ${word} and more`;
+    const longPack = { ...pack, epic: { ...pack.epic, summary } };
+    const reasons = ruleBasedReasons(longPack);
+    assert.ok(reasons.every((r) => !r.title.includes(word.slice(0, 3)) || r.title.includes(word)), word);
+    const { dropped } = validateReasons(reasons, longPack, { keep: ['ruleId', 'baseRateFact'] });
+    assert.deepEqual(dropped, [], word);
+  }
+});
