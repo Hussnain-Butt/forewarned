@@ -141,4 +141,4 @@ The developer chose to move the stored pre-mortem off the epic. Unit tests cover
 | Concern: principal check may never run | Open | Logged in `docs/backlog.md`; safe while `startRun` is the only producer. |
 | Concern: no run cap yet | Open | Story 009 (M8). |
 
-The old entity properties on the demo site (`forewarned-evidence` and `forewarned-premortem` on CHK-12 and PLAT-1) are no longer read or written. The developer deletes them once, so they stop being readable.
+The old entity properties on the demo site (`forewarned-evidence` and `forewarned-premortem` on CHK-12 and PLAT-1) are no longer read or written. The developer deleted all four on 2 Nov 2026 (each DELETE returned 204; a GET now returns 404).
