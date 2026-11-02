@@ -11,7 +11,8 @@
     "seed:test": "node --test \"scripts/seed/test/*.test.mjs\"",
     "engine:test": "node --test \"test/engine/*.test.mjs\"",
     "engine:run": "node scripts/engine/run-on-site.mjs",
-    "test": "npm run seed:test && npm run engine:test"
+    "test": "npm run seed:test && npm run engine:test && npm run premortem:test",
+    "premortem:test": "node --test \"test/premortem/*.test.mjs\""
   },
   "devDependencies": {
     "eslint": "^8.56.0",
@@ -20,6 +21,8 @@
   "dependencies": {
     "@forge/api": "^8.4.0",
     "@forge/bridge": "7.2.1-next.13",
+    "@forge/events": "^2.1.7",
+    "@forge/kvs": "^2.1.1",
     "@forge/react": "12.4.0-next.3",
     "@forge/resolver": "2.0.2-next.0",
     "react": "^18.2.0"

@@ -36,6 +36,27 @@ const App = () => {
   const openAgent = () =>
     rovo.open({ ...AGENT, prompt: `Run a pre-mortem on epic ${state.issueKey}.` });
 
+  // M3 Task 1 platform check (temporary; Task 8 replaces it with the Run controls): queue a run,
+  // then poll its status every 2 s for up to 60 s.
+  const [check, setCheck] = useState(null);
+  const runCheck = async () => {
+    setCheck('Queued…');
+    const started = await invoke('startRun').catch(() => ({ error: 'The run could not be started.' }));
+    if (started.error) {
+      setCheck(started.error);
+      return;
+    }
+    for (let i = 0; i < 30; i += 1) {
+      await new Promise((done) => { setTimeout(done, 2000); });
+      const { status } = await invoke('getRunStatus');
+      if (status?.runId === started.runId && (status.status === 'done' || status.status === 'failed')) {
+        setCheck(`Run check: ${status.status}, ${status.count ?? 'no'} child work items${status.error ? ` (${status.error})` : ''}`);
+        return;
+      }
+    }
+    setCheck('Run check: no result after 60 s.');
+  };
+
   if (state.loading) {
     return <Spinner label="Loading the pre-mortem" />;
   }
@@ -70,7 +91,9 @@ const App = () => {
           </Button>
         ) : null}
         <Button onClick={load}>Refresh</Button>
+        <Button onClick={runCheck}>Check run (M3 test)</Button>
       </Inline>
+      {check ? <Text size="small">{check}</Text> : null}
     </Stack>
   );
 };

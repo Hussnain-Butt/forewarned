@@ -85,15 +85,28 @@ modules:
       handler: actions/index.submitPremortem
     - key: get-premortem-fn
       handler: actions/index.getPremortem
+    # Story 003: the pre-mortem run happens here, outside the 25 s resolver and 55 s action limits.
+    - key: premortem-run-fn
+      handler: premortem/consumer.handler
+      timeoutSeconds: 300
+  consumer:
+    - key: premortem-run-consumer
+      queue: premortem-run
+      function: premortem-run-fn
 resources:
   - key: main
     path: src/frontend/index.jsx
 permissions:
+  # The queue consumer reads Jira and writes the report as the user who started the run, through
+  # offline user impersonation, so the Jira scopes allow it (story 003; story 002 open question 1).
   scopes:
-    - read:jira-work
-    - write:jira-work
-    - read:space:confluence
-    - write:page:confluence
+    read:jira-work:
+      allowImpersonation: true
+    write:jira-work:
+      allowImpersonation: true
+    storage:app: {}
+    read:space:confluence: {}
+    write:page:confluence: {}
 app:
   runtime:
     name: nodejs24.x
