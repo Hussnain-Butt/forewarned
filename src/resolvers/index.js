@@ -4,7 +4,7 @@ import { kvs } from '@forge/kvs';
 import { randomUUID } from 'node:crypto';
 import { forgeSenders } from '../engine/forge-jira.js';
 import { createJira } from '../engine/jira.js';
-import { getPanelData } from '../premortem/panel.js';
+import { getPanelData, requestAgentAction } from '../premortem/panel.js';
 import { startRun } from '../premortem/run.js';
 import { readRunStatus } from '../premortem/store.js';
 
@@ -21,10 +21,23 @@ resolver.define('getPanel', async ({ context }) => {
   }
   try {
     const port = createJira(forgeSenders(), { deadline: Date.now() + START_BUDGET_MS });
-    return await getPanelData({ deps: { port, kvs }, epicKey: issueKey });
+    return await getPanelData({ deps: { port, kvs }, epicKey: issueKey, accountId: context.accountId });
   } catch (error) {
     console.error('getPanel failed:', error instanceof Error ? error.name : 'Unknown error');
     return { error: "Forewarned couldn't load the pre-mortem (Jira didn't respond). Try again in a minute." };
+  }
+});
+
+// Story 005 AC 19: remembers, for this user and epic, that they just asked the agent.
+resolver.define('requestAgent', async ({ context }) => {
+  const issueKey = context.extension?.issue?.key;
+  if (!issueKey || !context.accountId) return { error: 'This panel needs a work item and a signed-in user.' };
+  try {
+    const port = createJira(forgeSenders(), { deadline: Date.now() + START_BUDGET_MS });
+    return await requestAgentAction({ deps: { port, kvs, now: Date.now }, epicKey: issueKey, accountId: context.accountId });
+  } catch (error) {
+    console.error('requestAgent failed:', error instanceof Error ? error.name : 'Unknown error');
+    return { error: "Forewarned couldn't note the request. The agent's write-up will show after a refresh." };
   }
 });
 

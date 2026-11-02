@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { runPremortemAction } from '../../src/premortem/actions.js';
 import { handleRun } from '../../src/premortem/consumer.js';
-import { getPanelData } from '../../src/premortem/panel.js';
+import { getPanelData, requestAgentAction } from '../../src/premortem/panel.js';
 import { keyOf } from '../engine/seed-snapshot.mjs';
 import { fakeKvs, fakeQueue, fakeSenders, idOf, portOf } from './fakes.mjs';
 
@@ -15,15 +15,14 @@ const BLOCKER = keyOf('un-plt-e03-07');
 const NOW = Date.parse('2026-11-02T08:00:00.000Z');
 
 // acc-1 runs the pre-mortem; the panel then reads it with senders made from `readerOptions`.
-async function panelFor(readerOptions = {}, { withRun = true } = {}) {
-  const kvs = fakeKvs();
+async function panelFor(readerOptions = {}, { withRun = true, kvs = fakeKvs(), accountId } = {}) {
   if (withRun) {
     const builder = fakeSenders();
     const deps = { port: portOf(builder.senders), kvs, queue: fakeQueue(kvs), now: () => NOW, newId: () => 'r1', log: () => {} };
     await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' });
     await handleRun({ event: { body: { runId: 'r1', epicKey: EPIC, epicId: EPIC_ID, accountId: 'acc-1' } }, senders: builder.senders, kvs, now: () => NOW, log: () => {} });
   }
-  return getPanelData({ deps: { port: portOf(fakeSenders(readerOptions).senders), kvs }, epicKey: EPIC });
+  return getPanelData({ deps: { port: portOf(fakeSenders(readerOptions).senders), kvs }, epicKey: EPIC, accountId });
 }
 
 test('the builder gets the report, the evidence, the comparison set and may run', async () => {
@@ -52,7 +51,7 @@ test('a viewer who can\'t edit may read but not run', async () => {
 
 test('before any run the panel gets no report', async () => {
   const panel = await panelFor({}, { withRun: false });
-  assert.deepEqual(panel, { issueKey: EPIC, canRun: true, report: null, evidence: [], comparison: null, epic: null });
+  assert.deepEqual(panel, { issueKey: EPIC, canRun: true, report: null, evidence: [], comparison: null, epic: null, agentRequest: null });
 });
 
 test('a work item that isn\'t an epic gets "This panel works on epics only." (005 AC 3)', async () => {
@@ -64,4 +63,22 @@ test('a work item that isn\'t an epic gets "This panel works on epics only." (00
 test('an epic the user can\'t see gets the not-visible message', async () => {
   const panel = await panelFor({ hidden: [EPIC] });
   assert.deepEqual(panel, { error: `${EPIC} doesn't exist, or you don't have permission to see it.` });
+});
+
+// The panel asks the agent, Rovo opens and Jira remounts the panel; the new panel finds the request
+// and keeps waiting for the write-up (story 005 AC 19).
+test('asking the agent is remembered for this user, so a remounted panel keeps waiting', async () => {
+  const kvs = fakeKvs();
+  const first = await panelFor({}, { kvs, accountId: 'acc-1' });
+  assert.equal(first.agentRequest, null);
+  const deps = { port: portOf(fakeSenders().senders), kvs, now: () => NOW };
+  assert.deepEqual(await requestAgentAction({ deps, epicKey: EPIC, accountId: 'acc-1' }), { requested: true });
+  const again = await getPanelData({ deps, epicKey: EPIC, accountId: 'acc-1' });
+  assert.deepEqual(again.agentRequest, { savedBefore: null, requestedAt: '2026-11-02T08:00:00.000Z' });
+  assert.equal((await getPanelData({ deps, epicKey: EPIC, accountId: 'acc-2' })).agentRequest, null);
+});
+
+test("asking the agent about an epic the user can't see is refused", async () => {
+  const deps = { port: portOf(fakeSenders({ hidden: [EPIC] }).senders), kvs: fakeKvs(), now: () => NOW };
+  assert.deepEqual(await requestAgentAction({ deps, epicKey: EPIC, accountId: 'acc-1' }), { error: `${EPIC} doesn't exist, or you don't have permission to see it.` });
 });

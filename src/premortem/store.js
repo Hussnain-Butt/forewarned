@@ -5,6 +5,7 @@
 // - the run status (AC 4), replaced on every write so it never grows, expiring after 24 hours;
 // - the latest pre-mortem, the evidence pack and the report as one value, so the two are always
 //   written and read together and can't come from different runs.
+// A third, per user, remembers for a few minutes that they asked the agent (below).
 // The KVS object is passed in, so tests use a fake.
 
 const RUN_STATUS_TTL = { unit: 'HOURS', value: 24 };
@@ -25,3 +26,14 @@ export async function readPremortem(kvs, epicId) {
 }
 
 export const writePremortem = (kvs, epicId, { pack, report }) => kvs.set(premortemKey(epicId), { pack, report });
+
+// "Waiting for the agent" (story 005 AC 19), per epic and user for 5 minutes: opening Rovo remounts
+// the Jira panel, so the panel's own state can't hold it.
+const AGENT_REQUEST_TTL = { unit: 'MINUTES', value: 5 };
+const agentRequestKey = (epicId, accountId) => `agent:${epicId}:${accountId}`;
+
+export async function readAgentRequest(kvs, epicId, accountId) {
+  return (await kvs.get(agentRequestKey(epicId, accountId))) ?? null;
+}
+
+export const writeAgentRequest = (kvs, epicId, accountId, request) => kvs.set(agentRequestKey(epicId, accountId), request, { ttl: AGENT_REQUEST_TTL });

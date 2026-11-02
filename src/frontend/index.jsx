@@ -37,9 +37,16 @@ const App = () => {
     setTab(index);
   };
 
+  // Resolves to the panel data, or null when it couldn't be loaded.
   const load = () => invoke('getPanel')
-    .then((result) => setPanel(result))
-    .catch(() => setPanel({ error: LOAD_ERROR }));
+    .then((result) => {
+      setPanel(result);
+      return result;
+    })
+    .catch(() => {
+      setPanel({ error: LOAD_ERROR });
+      return null;
+    });
 
   // AC 6–7: polls the epic's run status every 2 s, at most 5 minutes, and follows whichever run the
   // status shows, so a run started in another tab or by the agent is followed too.
@@ -96,10 +103,10 @@ const App = () => {
     else selectTab(AGENT_TAB);
   };
 
-  // AC 19: checks for the agent's write-up every 5 s for at most 3 minutes, without a reload.
-  const waitForAgent = async (savedBefore, hadTabs) => {
+  // AC 19: checks for the agent's write-up every 5 s until 3 minutes after the request, without a
+  // reload.
+  const waitForAgent = async (savedBefore, hadTabs, startedAt) => {
     setAgentWait('waiting');
-    const startedAt = Date.now();
     while (Date.now() - startedAt < AGENT_LIMIT_MS) {
       await wait(AGENT_POLL_MS);
       const result = await invoke('getPanel').catch(() => null);
@@ -119,15 +126,23 @@ const App = () => {
     if (savedAt && savedAt !== savedBefore) showNewWriteUp(result, Boolean(panel?.report?.agent));
   };
 
-  // AC 17: opens Rovo chat with the Forewarned agent and the epic.
-  const openAgent = () => {
+  // AC 17: opens Rovo chat with the Forewarned agent and the epic. Opening Rovo remounts this panel,
+  // so the request is stored first and the remounted panel picks the wait up (below).
+  const openAgent = async () => {
     setAgentReady(false);
+    await invoke('requestAgent').catch(() => null);
     rovo.open({ ...AGENT, prompt: `Write the pre-mortem for epic ${panel.issueKey}.` });
-    waitForAgent(panel.report?.agent?.savedAt ?? null, Boolean(panel.report?.agent));
+    waitForAgent(panel.report?.agent?.savedAt ?? null, Boolean(panel.report?.agent), Date.now());
   };
 
   useEffect(() => {
-    load();
+    load().then((result) => {
+      const request = result?.agentRequest;
+      const unchanged = (result?.report?.agent?.savedAt ?? null) === request?.savedBefore;
+      if (request && unchanged && Date.now() - Date.parse(request.requestedAt) < AGENT_LIMIT_MS) {
+        waitForAgent(request.savedBefore, Boolean(result.report?.agent), Date.parse(request.requestedAt));
+      }
+    });
     rovo.isEnabled().then(setRovoEnabled).catch(() => setRovoEnabled(false));
     invoke('getRunStatus').then(({ status }) => {
       if (['queued', 'running'].includes(status?.status)) {
