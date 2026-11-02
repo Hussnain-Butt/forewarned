@@ -3,11 +3,10 @@ import api, { route } from '@forge/api';
 import { Queue } from '@forge/events';
 import { kvs } from '@forge/kvs';
 import { randomUUID } from 'node:crypto';
-import { PREMORTEM_PROPERTY } from '../actions';
 import { forgeSenders } from '../engine/forge-jira.js';
 import { createJira } from '../engine/jira.js';
 import { startRun } from '../premortem/run.js';
-import { readRunStatus } from '../premortem/store.js';
+import { REPORT_PROPERTY, readRunStatus } from '../premortem/store.js';
 
 const resolver = new Resolver();
 const runQueue = new Queue({ key: 'premortem-run' });
@@ -22,7 +21,7 @@ resolver.define('getPremortem', async ({ context }) => {
   try {
     const response = await api
       .asUser()
-      .requestJira(route`/rest/api/3/issue/${issueKey}/properties/${PREMORTEM_PROPERTY}`);
+      .requestJira(route`/rest/api/3/issue/${issueKey}/properties/${REPORT_PROPERTY}`);
     if (response.status === 404) {
       return { issueKey, report: null };
     }

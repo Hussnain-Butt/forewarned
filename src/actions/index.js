@@ -1,14 +1,19 @@
-import api, { route } from '@forge/api';
-import { forgeSenders } from '../engine/forge-jira.js';
-import { buildEvidencePack } from '../engine/index.js';
+// The Forewarned agent's Rovo actions (stories 003 and 008). Each Forge function resolves the epic
+// key, builds the real dependencies (Jira as the user in session, KVS, the run queue) and calls
+// the action in src/premortem/actions.js. The user's account ID comes from the function context,
+// never from the agent's inputs (Rovo action guidance).
 
-// The Rovo agent reads the evidence pack and saves its reasons on the epic (spike M0a, story 002).
-export const PREMORTEM_PROPERTY = 'forewarned-premortem';
+import { Queue } from '@forge/events';
+import { kvs } from '@forge/kvs';
+import { randomUUID } from 'node:crypto';
+import { forgeSenders } from '../engine/forge-jira.js';
+import { createJira } from '../engine/jira.js';
+import { getEvidenceAction, getPremortemAction, runPremortemAction, submitPremortemAction } from '../premortem/actions.js';
 
 const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9_]*-\d+$/;
-const MAX_REASONS = 5;
-const MAX_TITLE_LENGTH = 120;
-const MAX_EXPLANATION_LENGTH = 600;
+// Rovo actions get 55 s; retries stop once they would end after this.
+const ACTION_BUDGET_MS = 40000;
+const runQueue = new Queue({ key: 'premortem-run' });
 
 // The agent fills epicKey from the chat, so check its shape and fall back to the work item in view.
 const resolveEpicKey = (payload) => {
@@ -20,119 +25,40 @@ const resolveEpicKey = (payload) => {
   return typeof fromContext === 'string' && ISSUE_KEY_PATTERN.test(fromContext) ? fromContext : null;
 };
 
-// Story 002: the evidence engine builds the pack as the requesting user. The user's account ID
-// comes from the function context, never from the agent's inputs (Rovo action guidance).
-const buildPack = (epicKey, context) => buildEvidencePack({
-  senders: forgeSenders(),
-  epicKey,
-  accountId: context?.principal?.accountId ?? null,
+const realDeps = () => ({
+  port: createJira(forgeSenders(), { deadline: Date.now() + ACTION_BUDGET_MS }),
+  kvs,
+  queue: runQueue,
+  now: Date.now,
+  newId: randomUUID,
+  log: console.log,
 });
 
-const errorMessage = (error) => (error instanceof Error ? error.message : 'Unknown error');
-
-export async function getEvidence(payload, context) {
+// Wraps an action: a missing epic key and any failure become a plain message for the agent.
+const action = (name, run) => async (payload, context) => {
   const epicKey = resolveEpicKey(payload);
   if (!epicKey) {
     return { error: 'No valid epic key was given. Ask the user which epic to use, for example PLAT-1.' };
   }
   try {
-    const { pack, error } = await buildPack(epicKey, context);
-    return error ? { error } : { epicKey, ...pack };
+    return await run({ deps: realDeps(), epicKey, payload, context });
   } catch (error) {
-    console.error('getEvidence failed:', errorMessage(error));
-    return { error: errorMessage(error) };
+    console.error(`${name} failed:`, error instanceof Error ? error.name : 'Unknown error');
+    // JiraError messages are written to be shown; anything else gets a generic one.
+    return { error: error?.name === 'JiraError' ? error.message : `Forewarned couldn't finish ${name}. Try again in a minute.` };
   }
-}
+};
 
-// Spike M0e: an action reads the report back from the epic's entity property.
-export async function getPremortem(payload) {
-  const epicKey = resolveEpicKey(payload);
-  if (!epicKey) {
-    return { error: 'No valid epic key was given. Ask the user which epic to use, for example PLAT-1.' };
-  }
-  try {
-    const response = await api
-      .asUser()
-      .requestJira(route`/rest/api/3/issue/${epicKey}/properties/${PREMORTEM_PROPERTY}`);
-    if (response.status === 404) {
-      return { epicKey, report: null, message: `No pre-mortem has been saved on ${epicKey} yet.` };
-    }
-    if (!response.ok) {
-      throw new Error(`Reading the pre-mortem on ${epicKey} failed: ${response.status}`);
-    }
-    const { value } = await response.json();
-    return { epicKey, report: value };
-  } catch (error) {
-    console.error('getPremortem failed:', errorMessage(error));
-    return { error: errorMessage(error) };
-  }
-}
+export const runPremortem = action('run-premortem', ({ deps, epicKey, context }) => (
+  runPremortemAction({ deps, epicKey, accountId: context?.principal?.accountId })));
 
-export async function submitPremortem(payload, context) {
-  const epicKey = resolveEpicKey(payload);
-  if (!epicKey) {
-    return { saved: false, error: 'No valid epic key was given.' };
-  }
+export const getEvidence = action('get-evidence', ({ deps, epicKey }) => getEvidenceAction({ deps, epicKey }));
 
-  let proposed;
-  try {
-    proposed = JSON.parse(payload.reasonsJson);
-  } catch {
-    return { saved: false, error: 'reasonsJson is not valid JSON.' };
-  }
-  if (!Array.isArray(proposed)) {
-    return { saved: false, error: 'reasonsJson must be a JSON array of reasons.' };
-  }
+export const submitPremortem = action('submit-premortem', ({ deps, epicKey, payload }) => submitPremortemAction({
+  deps,
+  epicKey,
+  reasonsJson: payload.reasonsJson,
+  packId: typeof payload.packId === 'string' && payload.packId.trim() ? payload.packId.trim() : undefined,
+}));
 
-  try {
-    // Rebuild the evidence so a reason can only cite IDs that really exist for this epic.
-    const { pack, error } = await buildPack(epicKey, context);
-    if (error) {
-      return { saved: false, error };
-    }
-    const validIds = new Set(pack.evidence.map((item) => item.id));
-
-    const reasons = [];
-    const dropped = [];
-    for (const item of proposed) {
-      const title = typeof item?.title === 'string' ? item.title.trim().slice(0, MAX_TITLE_LENGTH) : '';
-      const explanation =
-        typeof item?.explanation === 'string' ? item.explanation.trim().slice(0, MAX_EXPLANATION_LENGTH) : '';
-      const evidenceIds = Array.isArray(item?.evidenceIds)
-        ? [...new Set(item.evidenceIds.filter((id) => validIds.has(id)))]
-        : [];
-      if (!title || evidenceIds.length === 0 || reasons.length === MAX_REASONS) {
-        dropped.push(title || '(untitled reason)');
-        continue;
-      }
-      reasons.push({ title, explanation, evidenceIds });
-    }
-
-    if (reasons.length === 0) {
-      return { saved: false, error: 'No reason cited valid evidence, so nothing was saved.', dropped };
-    }
-
-    const report = {
-      version: 1,
-      savedAt: new Date().toISOString(),
-      source: 'rovo-agent',
-      evidence: pack.evidence,
-      reasons,
-      droppedCount: dropped.length,
-    };
-    const response = await api
-      .asUser()
-      .requestJira(route`/rest/api/3/issue/${epicKey}/properties/${PREMORTEM_PROPERTY}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(report),
-      });
-    if (!response.ok) {
-      throw new Error(`Saving the pre-mortem on ${epicKey} failed: ${response.status}`);
-    }
-    return { saved: true, epicKey, savedReasons: reasons.length, dropped };
-  } catch (error) {
-    console.error('submitPremortem failed:', errorMessage(error));
-    return { saved: false, error: errorMessage(error) };
-  }
-}
+export const getPremortem = action('get-premortem', ({ deps, epicKey }) => getPremortemAction({ deps, epicKey }));

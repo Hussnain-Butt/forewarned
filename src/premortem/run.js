@@ -9,8 +9,9 @@ const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
 // writing its result, so it must not block new runs for the rest of its 24-hour status expiry.
 const STUCK_AFTER_MS = 10 * 60 * 1000;
 
-const inProgress = (status, now) => status && ['queued', 'running'].includes(status.status)
-  && now - Date.parse(status.startedAt ?? 0) < STUCK_AFTER_MS;
+// True while a run is queued or running and not stuck. Shared with the Rovo actions.
+export const isRunInProgress = (status, now) => Boolean(status && ['queued', 'running'].includes(status.status)
+  && now - Date.parse(status.startedAt ?? 0) < STUCK_AFTER_MS);
 
 // Returns { runId, status: 'started' | 'already-running' } or { error } (a message for the user).
 // `accountId` must come from the Forge context of the caller, never from agent inputs.
@@ -31,7 +32,7 @@ export async function startRun({ port, kvs, queue, epicKey: requestedKey, accoun
   }
 
   const current = await readRunStatus(kvs, epicKey);
-  if (inProgress(current, now())) return { runId: current.runId, status: 'already-running' };
+  if (isRunInProgress(current, now())) return { runId: current.runId, status: 'already-running' };
 
   // The status is written before the push, so a second click finds the run (AC 2); the queue's
   // concurrency key also keeps two events for one epic from running at the same time.

@@ -19,10 +19,10 @@ modules:
 
         When the user asks for a pre-mortem:
         1. Find the epic key. Use the work item the user is viewing if it is an epic; otherwise ask which epic to use.
-        2. Call the get-evidence action with that epic key. If it returns an error, explain the error and stop.
-        3. Write between 2 and 5 failure reasons. Each reason has a short title, a one or two sentence explanation, and the IDs of the evidence items it is based on, for example ["E1", "E2"]. Only use facts and numbers that appear in the evidence. Never invent numbers, names or dates.
-        4. Call the submit-premortem action with the epic key and the reasons as a JSON array in reasonsJson, for example [{"title": "Scope keeps growing", "explanation": "...", "evidenceIds": ["E2"]}].
-        5. Tell the user how many reasons were saved and which were dropped, and that the saved pre-mortem appears in the Forewarned panel on the epic.
+        2. Call the get-evidence action with that epic key. If it says no evidence exists, call run-premortem, tell the user the run takes about a minute, and call get-evidence again when they ask you to continue. If it says a run is in progress, wait a moment and call get-evidence again. For any other error, explain it and stop.
+        3. Write between 2 and 5 failure reasons. Each reason has a short title, a likelihood (High, Medium or Low), a one or two sentence explanation, the IDs of the evidence items it is based on (for example ["E1", "E2"]) and a one-sentence mitigation. Copy every number, date and work item key exactly as it appears in the evidence you cite; never round, estimate or invent them. Use High only when you cite an evidence item with baseRate true.
+        4. Call the submit-premortem action with the epic key, the packId from get-evidence, and the reasons as a JSON array in reasonsJson, for example [{"title": "Scope keeps growing", "likelihood": "Medium", "explanation": "...", "evidenceIds": ["E2"], "mitigation": "..."}].
+        5. Tell the user how many reasons were saved, which were dropped and why, and that the saved pre-mortem appears in the Forewarned panel on the epic. If reasons were dropped, you may fix them and submit once more.
 
         If the evidence is too thin for a reason, say so instead of guessing.
 
@@ -31,10 +31,23 @@ modules:
         - Run a pre-mortem on this epic
         - What does the saved pre-mortem say?
       actions:
+        - run-premortem
         - get-evidence
         - submit-premortem
         - get-premortem
   action:
+    - key: run-premortem
+      name: Run pre-mortem
+      function: run-premortem-fn
+      actionVerb: TRIGGER
+      description: |
+        Starts building the evidence pack and the rule-based pre-mortem for a Jira epic in the background. Call it when get-evidence says no evidence exists. It returns at once; the run takes about a minute.
+      inputs:
+        epicKey:
+          title: Epic key
+          type: string
+          required: true
+          description: The key of the Jira epic, for example PLAT-1.
     - key: get-evidence
       name: Get pre-mortem evidence
       function: get-evidence-fn
@@ -52,7 +65,7 @@ modules:
       function: submit-premortem-fn
       actionVerb: UPDATE
       description: |
-        Saves pre-mortem reasons on a Jira epic. Reasons that don't cite valid evidence IDs from get-evidence are dropped.
+        Saves pre-mortem reasons on a Jira epic. Each reason is checked against the stored evidence: reasons that cite no valid evidence ID, or quote numbers or work item keys that aren't in it, are dropped.
       inputs:
         epicKey:
           title: Epic key
@@ -63,7 +76,12 @@ modules:
           title: Reasons as JSON
           type: string
           required: true
-          description: 'A JSON array of 2 to 5 reasons, each with "title", "explanation" and "evidenceIds" (IDs from get-evidence).'
+          description: 'A JSON array of 2 to 5 reasons, each with "title", "likelihood" (High, Medium or Low), "explanation", "evidenceIds" (IDs from get-evidence) and "mitigation".'
+        packId:
+          title: Evidence pack ID
+          type: string
+          required: false
+          description: The packId that get-evidence returned, so the reasons are checked against the same evidence.
     - key: get-premortem
       name: Get saved pre-mortem
       function: get-premortem-fn
@@ -79,6 +97,8 @@ modules:
   function:
     - key: resolver
       handler: index.handler
+    - key: run-premortem-fn
+      handler: actions/index.runPremortem
     - key: get-evidence-fn
       handler: actions/index.getEvidence
     - key: submit-premortem-fn
