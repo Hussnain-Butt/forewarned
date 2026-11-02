@@ -60,6 +60,9 @@ export function scopeSignal(snapshot, comparison) {
         leftOut,
       },
     ));
+  } else if (fact) {
+    // The check still reads "Found", so the note says what was found.
+    notes.push(`${fact} Fewer than ${MIN_EPICS} comparable epics had ${MIN_START} or more work items at their start, so there is no scope base rate to judge that growth against.`);
   } else {
     notes.push(`Fewer than ${MIN_EPICS} comparable epics had ${MIN_START} or more work items at their start, so there is no scope base rate.`);
   }

@@ -46,10 +46,18 @@ test('comparable epics with fewer than 5 work items at their start are left out 
   assert.match(base.fact, /\(7 epics, from \d+% to \d+%; 1 left out because it had fewer than 5 work items at its start\)\.$/);
 });
 
-test('fewer than 3 comparable epics: no scope base rate', () => {
+// The checks list shows "Scope growth: Found." with this note, so the note names what was found.
+test('fewer than 3 comparable epics: no scope base rate, and the note says what was found', () => {
   const { check, drafts } = run(seedSnapshot(), (c) => ({ ...c, epics: c.epics.slice(0, 2) }));
   assert.deepEqual(drafts.map((d) => d.type), ['scope-current']);
-  assert.match(check.note, /Fewer than 3 comparable epics had 5 or more work items at their start, so there is no scope base rate\./);
+  assert.equal(check.status, 'found');
+  assert.equal(check.note, `${drafts[0].fact} Fewer than 3 comparable epics had 5 or more work items at their start, so there is no scope base rate to judge that growth against.`);
+});
+
+test('no child work items and fewer than 3 comparable epics: nothing found', () => {
+  const { check } = run(withEpic({ childCount: 0, childCountAtStart: 0 }), (c) => ({ ...c, epics: c.epics.slice(0, 2) }));
+  assert.equal(check.status, 'insufficient');
+  assert.equal(check.note, `${KEY} has no child work items yet. Fewer than 3 comparable epics had 5 or more work items at their start, so there is no scope base rate.`);
 });
 
 test('counts of 1,000 or more get commas (AC 27)', () => {
