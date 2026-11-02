@@ -4,10 +4,15 @@ import { Queue } from '@forge/events';
 import { kvs } from '@forge/kvs';
 import { randomUUID } from 'node:crypto';
 import { PREMORTEM_PROPERTY } from '../actions';
-import { readRunStatus, writeRunStatus } from '../premortem/store.js';
+import { forgeSenders } from '../engine/forge-jira.js';
+import { createJira } from '../engine/jira.js';
+import { startRun } from '../premortem/run.js';
+import { readRunStatus } from '../premortem/store.js';
 
 const resolver = new Resolver();
 const runQueue = new Queue({ key: 'premortem-run' });
+// Resolvers have 25 s; starting a run needs only a few requests.
+const START_BUDGET_MS = 15000;
 
 resolver.define('getPremortem', async ({ context }) => {
   const issueKey = context.extension?.issue?.key;
@@ -33,17 +38,23 @@ resolver.define('getPremortem', async ({ context }) => {
   }
 });
 
-// M3 Task 1 platform check: queue a run for the epic in view. The account ID comes from the
-// Forge context, never from the panel. Task 5 replaces this with the full start function.
+// Story 003 AC 1: "Run pre-mortem" for the epic in view. The account ID comes from the Forge
+// context, never from the panel.
 resolver.define('startRun', async ({ context }) => {
-  const epicKey = context.extension?.issue?.key;
-  if (!epicKey || !context.accountId) {
-    return { error: 'This panel needs an epic and a signed-in user to start a run.' };
+  try {
+    return await startRun({
+      port: createJira(forgeSenders(), { deadline: Date.now() + START_BUDGET_MS }),
+      kvs,
+      queue: runQueue,
+      epicKey: context.extension?.issue?.key,
+      accountId: context.accountId,
+      now: Date.now,
+      newId: randomUUID,
+    });
+  } catch (error) {
+    console.error('startRun failed:', error instanceof Error ? error.message : 'Unknown error');
+    return { error: "Forewarned couldn't start the run. Try again in a minute." };
   }
-  const runId = randomUUID();
-  await writeRunStatus(kvs, epicKey, { runId, status: 'queued', step: null, startedAt: new Date().toISOString(), finishedAt: null, error: null });
-  await runQueue.push({ body: { runId, epicKey, accountId: context.accountId } });
-  return { runId };
 });
 
 resolver.define('getRunStatus', async ({ context }) => {
