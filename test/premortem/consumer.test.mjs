@@ -7,21 +7,22 @@ import { computePack } from '../../src/engine/pack.js';
 import { handleRun } from '../../src/premortem/consumer.js';
 import { ruleBasedReasons } from '../../src/premortem/rules.js';
 import { keyOf, seedSnapshot } from '../engine/seed-snapshot.mjs';
-import { fakeKvs, fakeSenders, storedOf } from './fakes.mjs';
+import { fakeKvs, fakeSenders, idOf, storedOf } from './fakes.mjs';
 
 const EPIC = keyOf('ll-chk-e11');
+const EPIC_ID = await idOf(EPIC);
 const NOW = Date.parse('2026-11-02T08:00:00.000Z');
 const quiet = () => {};
 
-async function run({ epicKey = EPIC, statusRunId = 'r1', eventRunId = 'r1', statusValue = 'queued', principal, senderOptions, failSet, before } = {}) {
+async function run({ epicKey = EPIC, epicId = EPIC_ID, statusRunId = 'r1', eventRunId = 'r1', statusValue = 'queued', principal, senderOptions, failSet, before } = {}) {
   const kvs = fakeKvs({ failSet });
   const fake = fakeSenders(senderOptions);
-  await kvs.set(`run:${epicKey}`, { runId: statusRunId, status: statusValue, step: null, startedAt: new Date(NOW).toISOString(), finishedAt: null, error: null });
+  await kvs.set(`run:${epicId}`, { runId: statusRunId, status: statusValue, step: null, startedAt: new Date(NOW).toISOString(), finishedAt: null, error: null });
   kvs.writes.length = 0;
   await before?.({ kvs, fake });
   const logs = [];
-  await handleRun({ event: { body: { runId: eventRunId, epicKey, accountId: 'acc-1' } }, principal, senders: fake.senders, kvs, now: () => NOW, log: (line) => logs.push(line) });
-  return { kvs, fake, logs, status: kvs.data.get(`run:${epicKey}`).value };
+  await handleRun({ event: { body: { runId: eventRunId, epicKey, epicId, accountId: 'acc-1' } }, principal, senders: fake.senders, kvs, now: () => NOW, log: (line) => logs.push(line) });
+  return { kvs, fake, logs, status: kvs.data.get(`run:${epicId}`).value };
 }
 
 test('a run stores the pack and a version 2 report in KVS, and reports each step (AC 6–7)', async () => {
@@ -30,7 +31,7 @@ test('a run stores the pack and a version 2 report in KVS, and reports each step
   assert.equal(status.finishedAt, '2026-11-02T08:00:00.000Z');
   const steps = kvs.writes.filter((w) => w.value.status === 'running').map((w) => w.value.step);
   assert.deepEqual(steps, ['comparable epics', 'past epics', 'scope', 'load', 'dependencies', 'writing']);
-  const { pack, report } = storedOf(kvs, EPIC);
+  const { pack, report } = storedOf(kvs, EPIC_ID);
   assert.deepEqual(pack.evidence, computePack(seedSnapshot()).evidence);
   assert.equal(report.version, 2);
   assert.equal(report.packId, pack.packId);
@@ -47,7 +48,7 @@ test('an event replaced by a newer run does nothing', async () => {
 
 test('an epic that is no longer an epic fails with a user-safe message (003 edge case)', async () => {
   const story = keyOf('bk-chk-e11-03');
-  const { status } = await run({ epicKey: story });
+  const { status } = await run({ epicKey: story, epicId: await idOf(story) });
   assert.equal(status.status, 'failed');
   assert.equal(status.error, `${story} is no longer an epic or no longer exists.`);
 });
@@ -68,9 +69,9 @@ test('any other error fails the run without throwing', async () => {
 
 test('an agent write-up survives a new run, marked as based on an older pack (AC 6, Review Focus 5)', async () => {
   const agent = { reasons: [], savedAt: '2026-11-01T08:00:00.000Z', packId: 'old-pack', droppedByRule: {}, stale: false };
-  const before = ({ kvs }) => kvs.set(`premortem:${EPIC}`, { pack: { packId: 'old-pack' }, report: { version: 2, agent, packId: 'old-pack' } });
+  const before = ({ kvs }) => kvs.set(`premortem:${EPIC_ID}`, { pack: { packId: 'old-pack' }, report: { version: 2, agent, packId: 'old-pack' } });
   const { kvs } = await run({ before });
-  const { report } = storedOf(kvs, EPIC);
+  const { report } = storedOf(kvs, EPIC_ID);
   assert.deepEqual(report.agent, { ...agent, stale: true });
 });
 
@@ -86,13 +87,13 @@ test('an event that arrives while its run already shows "running" was retried af
   assert.equal(status.status, 'failed');
   assert.equal(status.error, 'The run took too long. Try again in a minute.');
   assert.deepEqual(logs, ['Pre-mortem run failed: retried']);
-  assert.equal(storedOf(kvs, EPIC), undefined);
+  assert.equal(storedOf(kvs, EPIC_ID), undefined);
 });
 
 test('an event whose principal is another user fails instead of spinning', async () => {
   const { status, kvs } = await run({ principal: 'acc-2' });
   assert.equal(status.status, 'failed');
   assert.equal(status.error, "Forewarned couldn't confirm who started this run. Try again.");
-  assert.equal(storedOf(kvs, EPIC), undefined);
+  assert.equal(storedOf(kvs, EPIC_ID), undefined);
   assert.equal((await run({ principal: 'acc-1' })).status.status, 'done');
 });

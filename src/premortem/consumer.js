@@ -13,6 +13,7 @@ import { readPremortem, readRunStatus, writePremortem, writeRunStatus } from './
 import { validateReasons } from './validator.js';
 
 const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+const ISSUE_ID = /^\d+$/;
 
 // A failure with a message that is safe to show the user, and a short code for the log.
 class RunFailure extends Error {
@@ -25,19 +26,19 @@ class RunFailure extends Error {
 // Runs one queued pre-mortem. `senders` must act as the user in event.body.accountId; `principal`
 // is the account ID the platform gives the consumer, when it gives one.
 export async function handleRun({ event, principal, senders, kvs: store, now = Date.now, log = console.log }) {
-  const { runId, epicKey, accountId } = event.body ?? {};
-  if (!runId || !accountId || !ISSUE_KEY.test(epicKey ?? '')) {
+  const { runId, epicKey, epicId, accountId } = event.body ?? {};
+  if (!runId || !accountId || !ISSUE_KEY.test(epicKey ?? '') || !ISSUE_ID.test(epicId ?? '')) {
     log('Pre-mortem run skipped: invalid event');
     return;
   }
   // A newer run (or none) for this epic means this event is out of date; a finished run's event
   // can arrive again because delivery is "at least once".
-  const current = await readRunStatus(store, epicKey);
+  const current = await readRunStatus(store, epicId);
   if (current?.runId !== runId || ['done', 'failed'].includes(current.status)) {
     log('Pre-mortem run skipped: replaced by a newer run, or already finished');
     return;
   }
-  const setStatus = (fields) => writeRunStatus(store, epicKey, { runId, startedAt: current.startedAt, step: null, finishedAt: null, error: null, ...fields });
+  const setStatus = (fields) => writeRunStatus(store, epicId, { runId, startedAt: current.startedAt, step: null, finishedAt: null, error: null, ...fields });
   const fail = async (code, message) => {
     await setStatus({ status: 'failed', finishedAt: new Date(now()).toISOString(), error: message });
     log(`Pre-mortem run failed: ${code}`);
@@ -75,9 +76,9 @@ export async function handleRun({ event, principal, senders, kvs: store, now = D
     for (const { code } of dropped) log(`Rule-based reason dropped: ${code}`);
 
     try {
-      const previous = (await readPremortem(store, epicKey))?.report;
+      const previous = (await readPremortem(store, epicId))?.report;
       const report = buildReport({ pack, ruleReasons: kept, previous, accountId, now: now() });
-      await writePremortem(store, epicKey, { pack, report });
+      await writePremortem(store, epicId, { pack, report });
     } catch {
       throw new RunFailure('save', `Forewarned couldn't save the report on ${epicKey}.`);
     }

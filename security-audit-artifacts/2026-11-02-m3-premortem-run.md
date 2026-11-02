@@ -127,16 +127,16 @@ The developer chose to move the stored pre-mortem off the epic. Unit tests cover
 
 | Finding | Status | Change |
 |---|---|---|
-| 1. Pack and report readable through Jira's REST API | Fixed | The pack and the report are one Forge KVS value, `premortem:<KEY>` (`src/premortem/store.js`). The consumer writes nothing to Jira. Every action and the panel read the epic as the user (`GET issue`) before returning anything stored; a user who can't see it gets "doesn't exist, or you don't have permission to see it". |
+| 1. Pack and report readable through Jira's REST API | Fixed | The pack and the report are one Forge KVS value, `premortem:<issue ID>` (`src/premortem/store.js`; by ID, so a moved epic or a recreated space key can't pick up another epic's data). The consumer writes nothing to Jira. Every action and the panel read the epic as the user (`GET issue`) before returning anything stored; a user who can't see it gets "doesn't exist, or you don't have permission to see it". |
 | 2. Stale agent write-up filtered with the wrong evidence IDs | Fixed | `reportForReader` gives no reader a stale write-up's reasons, the builder included, and the panel asks for a new write-up. A report and a pack can no longer come from different runs, because they are written and read as one value. |
 | 3. Report and pack forgeable by users with Edit | Fixed | Nothing is stored on the epic. `submit-premortem` checks `EDIT_ISSUES` itself before saving and records `savedBy`. |
 | Concern: validator oracle | Fixed | `submit-premortem` validates against `packForReader` for the caller, so a reason citing hidden evidence is dropped as `no-history-evidence`, the same as an ID that doesn't exist. |
 | Concern: impersonation scope too wide | Fixed | `write:jira-work` no longer has `allowImpersonation`; only `read:jira-work` keeps it. |
-| Concern: links in agent text | Fixed | The validator drops a reason whose text holds a web address or a markdown link (code `link`). Other free text is logged as a known limit in `docs/backlog.md`. |
+| Concern: links in agent text | Fixed | The validator drops a reason whose text holds a web address or a markdown link that the epic summary and its cited evidence don't already contain (code `link`), so Forewarned's own reasons on such summaries still pass. Other free text is logged as a known limit in `docs/backlog.md`. |
 | Concern: run status read before any Jira read | Fixed | The actions read the epic as the user first. `getRunStatus` serves the panel's own issue from the signed Forge context. |
 | Concern: `error.message` in a log line | Fixed | `resolvers/index.js` logs `error.name`. |
 | Concern: no record of who saved a write-up | Fixed | `agent.savedBy` (account ID). |
-| Concern: no reader ID fails open (re-review) | Fixed | Without a reader ID the filter runs as the user in session. |
+| Concern: no reader ID fails open (re-review) | Fixed | The filter always runs as the user in session, the builder included (access can be taken away after a run); no account ID is involved. |
 | Concern: load fact names more epics than it links (re-review, ponytail) | Fixed | The fact names only its linked epics ("in 12 other epics in progress, including …"). |
 | Concern: principal check may never run | Open | Logged in `docs/backlog.md`; safe while `startRun` is the only producer. |
 | Concern: no run cap yet | Open | Story 009 (M8). |

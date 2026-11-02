@@ -1,6 +1,7 @@
 // Starting a pre-mortem run (story 003 AC 1–2): the one start function behind the panel's "Run
 // pre-mortem" and the agent's run-premortem action. It runs as the user, checks the work item is an
-// epic they can edit (the report is saved on it), and queues one event per epic at a time.
+// epic they can edit (everyone who can see the epic reads its pre-mortem), and queues one event per
+// epic at a time.
 
 import { readRunStatus, writeRunStatus } from './store.js';
 
@@ -25,14 +26,14 @@ export async function startRun({ port, kvs, queue, epicKey: requestedKey, accoun
     if (error.status === 404) return { error: `${requestedKey} doesn't exist, or you don't have permission to see it.` };
     throw error;
   }
-  const epicKey = issue.key;
+  const { key: epicKey, id: epicId } = issue;
   if (issue.fields.issuetype?.hierarchyLevel !== 1) return { error: `${epicKey} is not an epic. Forewarned runs pre-mortems on epics only.` };
   const permissions = await port.myPermissions(epicKey);
   if (!permissions.permissions?.EDIT_ISSUES?.havePermission) {
     return { error: `You can view ${epicKey} but can't edit it, so Forewarned can't save a pre-mortem on it.` };
   }
 
-  const current = await readRunStatus(kvs, epicKey);
+  const current = await readRunStatus(kvs, epicId);
   if (isRunInProgress(current, now())) return { runId: current.runId, status: 'already-running' };
 
   // The status is written before the push, so a second click finds the run (AC 2); the queue's
@@ -40,12 +41,12 @@ export async function startRun({ port, kvs, queue, epicKey: requestedKey, accoun
   // The concurrency key uses only letters, digits and dashes, like queue names.
   const runId = newId();
   const startedAt = new Date(now()).toISOString();
-  await writeRunStatus(kvs, epicKey, { runId, status: 'queued', step: null, startedAt, finishedAt: null, error: null });
+  await writeRunStatus(kvs, epicId, { runId, status: 'queued', step: null, startedAt, finishedAt: null, error: null });
   try {
-    await queue.push({ body: { runId, epicKey, accountId }, concurrency: { key: `run-${epicKey}`, limit: 1 } });
+    await queue.push({ body: { runId, epicKey, epicId, accountId }, concurrency: { key: `run-${epicId}`, limit: 1 } });
   } catch (error) {
     // Without this, the epic would show a run "in progress" that never started.
-    await writeRunStatus(kvs, epicKey, { runId, status: 'failed', step: null, startedAt, finishedAt: startedAt, error: "Forewarned couldn't start the run. Try again in a minute." });
+    await writeRunStatus(kvs, epicId, { runId, status: 'failed', step: null, startedAt, finishedAt: startedAt, error: "Forewarned couldn't start the run. Try again in a minute." });
     throw error;
   }
   return { runId, status: 'started' };

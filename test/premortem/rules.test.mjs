@@ -136,6 +136,20 @@ test('a long epic summary is shortened in titles and mitigations, and the reason
   assert.deepEqual(dropped, []);
 });
 
+test('summaries holding a web address still give reasons that pass (the link rule allows copied links)', () => {
+  const seed = seedSnapshot();
+  const blocker = keyOf('un-plt-e03-07');
+  const pack = computePack(seedSnapshot({ edit: (records) => {
+    for (const r of records.values()) {
+      if (keyOf(r.id) === seed.epic.key) r.summary = 'Relaunch www.shop.example checkout';
+      if (keyOf(r.id) === blocker) r.summary = 'Fix redirect for https://pay.example/cb';
+    }
+  } }));
+  const reasons = ruleBasedReasons(pack);
+  assert.equal(reasons.length, 5);
+  assert.deepEqual(validateReasons(reasons, pack, { keep: ['ruleId', 'baseRateFact'] }).dropped, []);
+});
+
 // A cut inside "73519" or "PAY-4821" left a partial number or key the validator doesn't know.
 test('a long summary is cut between words, so no number or key is split and every reason passes', () => {
   const pack = seedPack();

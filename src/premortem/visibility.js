@@ -7,10 +7,10 @@ import { readVisible } from '../engine/fetch.js';
 
 const HIDDEN_NOTE = "Some evidence is hidden because it names work items you can't see.";
 
-// The IDs of the pack's evidence items the reader can't fully see. The builder sees everything,
-// so their reads cost no request; a reader with no account ID is checked as the user in session.
-export async function hiddenEvidenceIds(port, pack, readerAccountId) {
-  if (!pack || (readerAccountId && readerAccountId === pack.builtFor)) return new Set();
+// The IDs of the pack's evidence items the user in session (the port's user) can't fully see. The
+// builder is checked too, because access can be taken away after a run.
+export async function hiddenEvidenceIds(port, pack) {
+  if (!pack) return new Set();
   const keys = [...new Set(pack.evidence.flatMap((item) => item.links.map((link) => link.key)))];
   const visible = new Set((await readVisible(port, keys, ['summary'])).map((issue) => issue.key));
   return new Set(pack.evidence.filter((item) => item.links.some((link) => !visible.has(link.key))).map((item) => item.id));

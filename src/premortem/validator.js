@@ -17,8 +17,10 @@ const NUMBER = /(?<![\w.])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?!\d)(?!(?:st|nd|
 // Spelled-out numbers count too (open question 2); "one" is left out, it is too common in English.
 const NUMBER_WORDS = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
 const NUMBER_WORD = new RegExp(`\\b(${Object.keys(NUMBER_WORDS).join('|')})\\b`, 'gi');
-// A web address or a markdown link: saved write-ups reach other users and their agents.
-const LINK = /https?:\/\/|www\.|\]\(/i;
+// Web addresses and markdown links. Saved write-ups reach other users and their agents, so like
+// keys, a reason may hold one only when the epic summary or its cited evidence already does.
+const LINK = /https?:\/\/[^\s)\]]+|www\.[^\s)\]]+|\]\([^)]*\)/gi;
+const linksIn = (text) => [...String(text ?? '').matchAll(LINK)].map(([link]) => link.replace(/[.,;:!?]+$/, ''));
 
 // The quantities in a text, normalized ("5,121" → "5121", "86 %" → "86"). Work item keys and
 // evidence IDs are removed first, so "CHK-12" and "E3" are not numbers.
@@ -72,7 +74,6 @@ function check(input, byId, epic, keep) {
   if (!mitigation) return { code: 'missing-mitigation', title };
   const explanation = cut(text(input.explanation), LIMITS.explanation);
   const written = `${title} ${explanation} ${mitigation}`;
-  if (LINK.test(written)) return { code: 'link', title };
 
   // AC 11: only IDs that exist, and at least one history item (team input never counts alone).
   const ids = Array.isArray(input.evidenceIds) ? input.evidenceIds.filter((id) => typeof id === 'string' && byId.has(id)) : [];
@@ -87,6 +88,8 @@ function check(input, byId, epic, keep) {
   if ([...numbersIn(written)].some((n) => !knownNumbers.has(n))) return { code: 'unknown-number', title };
   const knownKeys = new Set([epic?.key, ...keysIn(epic?.summary), ...cited.flatMap((item) => [...keysIn(item.fact), ...(item.links ?? []).map((l) => l.key)])]);
   if ([...keysIn(written)].some((k) => !knownKeys.has(k))) return { code: 'unknown-key', title };
+  const knownText = sources.join(' ');
+  if (linksIn(written).some((link) => !knownText.includes(link))) return { code: 'link', title };
 
   // AC 14: High needs a cited base rate.
   const capped = likelihood === 'High' && !cited.some((item) => item.baseRate) ? 'Medium' : likelihood;

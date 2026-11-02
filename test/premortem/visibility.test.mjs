@@ -7,9 +7,10 @@ import { getEvidenceAction, getPremortemAction, runPremortemAction, submitPremor
 import { handleRun } from '../../src/premortem/consumer.js';
 import { hiddenEvidenceIds, packForReader, reportForReader } from '../../src/premortem/visibility.js';
 import { keyOf } from '../engine/seed-snapshot.mjs';
-import { fakeKvs, fakeQueue, fakeSenders, portOf, storedOf } from './fakes.mjs';
+import { fakeKvs, fakeQueue, fakeSenders, idOf, portOf, storedOf } from './fakes.mjs';
 
 const EPIC = keyOf('ll-chk-e11');
+const EPIC_ID = await idOf(EPIC);
 const NOW = Date.parse('2026-11-02T08:00:00.000Z');
 const BLOCKER = keyOf('un-plt-e03-07');
 
@@ -19,21 +20,21 @@ async function stored(hidden = [], { kvs = fakeKvs(), accountId = 'acc-1', runId
   const builder = fakeSenders({ hidden: builderHides });
   const deps = { port: portOf(builder.senders), kvs, queue: fakeQueue(kvs), now: () => NOW, newId: () => runId, log: () => {} };
   await runPremortemAction({ deps, epicKey: EPIC, accountId });
-  await handleRun({ event: { body: { runId, epicKey: EPIC, accountId } }, senders: builder.senders, kvs, now: () => NOW, log: () => {} });
+  await handleRun({ event: { body: { runId, epicKey: EPIC, epicId: EPIC_ID, accountId } }, senders: builder.senders, kvs, now: () => NOW, log: () => {} });
   const readerDeps = { ...deps, port: portOf(fakeSenders({ hidden }).senders) };
-  return { ...storedOf(kvs, EPIC), deps, readerDeps, kvs };
+  return { ...storedOf(kvs, EPIC_ID), deps, readerDeps, kvs };
 }
 
-test('the builder sees everything, without any extra request', async () => {
+// Access can be taken away after a run, so the builder gets no shortcut past the check.
+test('the builder is checked too: after losing access to a blocker they no longer see it', async () => {
   const { pack, readerDeps } = await stored([BLOCKER]);
-  const before = readerDeps.port.requestCount;
-  assert.deepEqual(await hiddenEvidenceIds(readerDeps.port, pack, 'acc-1'), new Set());
-  assert.equal(readerDeps.port.requestCount, before);
+  const { report } = await getPremortemAction({ deps: readerDeps, epicKey: EPIC });
+  assert.ok(pack.builtFor === 'acc-1' && !JSON.stringify(report).includes(BLOCKER));
 });
 
 test('another reader who can see everything gets the same pack and report', async () => {
   const { pack, report, readerDeps } = await stored([]);
-  const hidden = await hiddenEvidenceIds(readerDeps.port, pack, 'acc-2');
+  const hidden = await hiddenEvidenceIds(readerDeps.port, pack);
   assert.deepEqual(hidden, new Set());
   assert.deepEqual(packForReader(pack, hidden), pack);
   assert.deepEqual(reportForReader(report, hidden), report);
@@ -41,7 +42,7 @@ test('another reader who can see everything gets the same pack and report', asyn
 
 test('a reader who can\'t see a blocker never sees it, nor the reasons built on it', async () => {
   const { pack, report, readerDeps } = await stored([BLOCKER]);
-  const hidden = await hiddenEvidenceIds(readerDeps.port, pack, 'acc-2');
+  const hidden = await hiddenEvidenceIds(readerDeps.port, pack);
   const openBlocker = pack.evidence.find((e) => e.type === 'open-blocker');
   assert.ok(hidden.has(openBlocker.id));
   const seen = packForReader(pack, hidden);
@@ -55,20 +56,13 @@ test('a reader who can\'t see a blocker never sees it, nor the reasons built on 
 });
 
 test('get-evidence and get-premortem answer each reader with what they may see', async () => {
-  const { readerDeps } = await stored([BLOCKER]);
-  const evidence = await getEvidenceAction({ deps: readerDeps, epicKey: EPIC, readerAccountId: 'acc-2' });
+  const { deps, readerDeps } = await stored([BLOCKER]);
+  const evidence = await getEvidenceAction({ deps: readerDeps, epicKey: EPIC });
   assert.ok(!JSON.stringify(evidence).includes(BLOCKER));
-  const { report } = await getPremortemAction({ deps: readerDeps, epicKey: EPIC, readerAccountId: 'acc-2' });
+  const { report } = await getPremortemAction({ deps: readerDeps, epicKey: EPIC });
   assert.ok(!JSON.stringify(report).includes(BLOCKER));
-  const own = await getEvidenceAction({ deps: readerDeps, epicKey: EPIC, readerAccountId: 'acc-1' });
+  const own = await getEvidenceAction({ deps, epicKey: EPIC });
   assert.ok(JSON.stringify(own).includes(BLOCKER));
-});
-
-// Without a reader ID the filter used to return everything.
-test('a reader with no account ID is filtered as the user in session, not shown everything', async () => {
-  const { pack, readerDeps } = await stored([BLOCKER]);
-  const hidden = await hiddenEvidenceIds(readerDeps.port, pack, undefined);
-  assert.ok(hidden.has(pack.evidence.find((e) => e.type === 'open-blocker').id));
 });
 
 test('the "hidden" note is set only when a reason was actually left out', async () => {
@@ -90,10 +84,9 @@ test('a stale agent write-up shows no reasons to any reader, the new builder inc
   // acc-2 can't see the blocker and runs again: their pack leaves it out, so the packId changes.
   const second = await stored([BLOCKER], { kvs, accountId: 'acc-2', runId: 'r2', builderHides: [BLOCKER] });
   assert.notEqual(second.pack.packId, first.pack.packId);
-  for (const reader of ['acc-2', 'acc-3']) {
-    const { report } = await getPremortemAction({ deps: second.readerDeps, epicKey: EPIC, readerAccountId: reader });
-    assert.ok(!JSON.stringify(report).includes(BLOCKER), `${reader} sees the blocker`);
-    assert.deepEqual(report.agent.reasons, []);
-    assert.equal(report.agent.stale, true);
-  }
+  // The new builder (acc-2), and anyone else, who can't see the blocker.
+  const { report } = await getPremortemAction({ deps: second.readerDeps, epicKey: EPIC });
+  assert.ok(!JSON.stringify(report).includes(BLOCKER));
+  assert.deepEqual(report.agent.reasons, []);
+  assert.equal(report.agent.stale, true);
 });

@@ -16,10 +16,12 @@ const IN_PROGRESS = 'A new evidence run is in progress. Wait a moment, then call
 const noEvidence = (epicKey) => `No evidence found for ${epicKey}. Call run-premortem first.`;
 const notVisible = (epicKey) => `${epicKey} doesn't exist, or you don't have permission to see it.`;
 
-// The epic's key as Jira gives it when the user can see the epic, otherwise null.
-async function visibleKey(port, epicKey) {
+// The epic's key and ID as Jira gives them when the user can see the epic, otherwise null.
+// Storage is keyed by the ID (store.js).
+async function visibleEpic(port, epicKey) {
   try {
-    return (await port.issue(epicKey, ['issuetype'])).key;
+    const { key, id } = await port.issue(epicKey, ['issuetype']);
+    return { key, id };
   } catch (error) {
     if (error.status === 404) return null;
     throw error;
@@ -38,15 +40,17 @@ export async function runPremortemAction({ deps, epicKey, accountId }) {
 
 // get-evidence: the stored pack, so the agent cites exactly what submit-premortem checks against,
 // without the evidence the reader can't see (story 002 AC 2). With no pack, a failed last run says
-// why, so the agent doesn't start the same failing run again.
-export async function getEvidenceAction({ deps, epicKey: requestedKey, readerAccountId }) {
-  const epicKey = await visibleKey(deps.port, requestedKey);
-  if (!epicKey) return { error: notVisible(requestedKey) };
-  const status = await readRunStatus(deps.kvs, epicKey);
+// why, so the agent can tell the user before it tries again.
+export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
+  const epic = await visibleEpic(deps.port, requestedKey);
+  if (!epic) return { error: notVisible(requestedKey) };
+  const status = await readRunStatus(deps.kvs, epic.id);
   if (isRunInProgress(status, deps.now())) return { error: IN_PROGRESS };
-  const stored = await readPremortem(deps.kvs, epicKey);
-  if (!stored) return { error: status?.status === 'failed' ? status.error : noEvidence(epicKey) };
-  return { epicKey, ...packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack, readerAccountId)) };
+  const stored = await readPremortem(deps.kvs, epic.id);
+  if (!stored) {
+    return { error: status?.status === 'failed' ? `The last run failed: ${status.error} Call run-premortem to try again.` : noEvidence(epic.key) };
+  }
+  return { epicKey: epic.key, ...packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack)) };
 }
 
 // submit-premortem: validates the agent's reasons against the part of the stored pack the user can
@@ -55,10 +59,11 @@ export async function getEvidenceAction({ deps, epicKey: requestedKey, readerAcc
 export async function submitPremortemAction({ deps, epicKey: requestedKey, accountId, reasonsJson, packId }) {
   const parsed = parseReasonsJson(reasonsJson);
   if (parsed.error) return { saved: false, error: parsed.error };
-  const epicKey = await visibleKey(deps.port, requestedKey);
-  if (!epicKey) return { saved: false, error: notVisible(requestedKey) };
-  if (isRunInProgress(await readRunStatus(deps.kvs, epicKey), deps.now())) return { saved: false, error: IN_PROGRESS };
-  const stored = await readPremortem(deps.kvs, epicKey);
+  const epic = await visibleEpic(deps.port, requestedKey);
+  if (!epic) return { saved: false, error: notVisible(requestedKey) };
+  const epicKey = epic.key;
+  if (isRunInProgress(await readRunStatus(deps.kvs, epic.id), deps.now())) return { saved: false, error: IN_PROGRESS };
+  const stored = await readPremortem(deps.kvs, epic.id);
   if (!stored) return { saved: false, error: noEvidence(epicKey) };
   if (packId && packId !== stored.pack.packId) return { saved: false, error: 'The evidence changed since you read it. Call get-evidence again.' };
   // Only people who can edit the epic may change its pre-mortem (story 003 open question 3).
@@ -67,23 +72,23 @@ export async function submitPremortemAction({ deps, epicKey: requestedKey, accou
     return { saved: false, error: `You can view ${epicKey} but can't edit it, so the pre-mortem can't be saved.` };
   }
 
-  const visiblePack = packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack, accountId));
+  const visiblePack = packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack));
   const { kept, dropped, droppedByRule } = validateReasons(parsed.reasons, visiblePack);
   for (const { code } of dropped) deps.log(`Reason dropped: ${code}`);
   if (!kept.length) {
     return { saved: false, error: 'No reason checked out against the evidence, so nothing was saved.', dropped };
   }
   const report = withAgentWriteUp(stored.report, { reasons: kept, droppedByRule, packId: stored.pack.packId, savedBy: accountId, now: deps.now() });
-  await writePremortem(deps.kvs, epicKey, { pack: stored.pack, report });
+  await writePremortem(deps.kvs, epic.id, { pack: stored.pack, report });
   return { saved: true, epicKey, savedReasons: kept.length, dropped };
 }
 
 // get-premortem (and the panel): the stored version 2 report, without the reasons built on
 // evidence the reader can't see (story 002 AC 2).
-export async function getPremortemAction({ deps, epicKey: requestedKey, readerAccountId }) {
-  const epicKey = await visibleKey(deps.port, requestedKey);
-  if (!epicKey) return { error: notVisible(requestedKey) };
-  const stored = await readPremortem(deps.kvs, epicKey);
-  if (!stored) return { epicKey, report: null, message: `No pre-mortem has been saved on ${epicKey} yet.` };
-  return { epicKey, report: reportForReader(stored.report, await hiddenEvidenceIds(deps.port, stored.pack, readerAccountId)) };
+export async function getPremortemAction({ deps, epicKey: requestedKey }) {
+  const epic = await visibleEpic(deps.port, requestedKey);
+  if (!epic) return { error: notVisible(requestedKey) };
+  const stored = await readPremortem(deps.kvs, epic.id);
+  if (!stored) return { epicKey: epic.key, report: null, message: `No pre-mortem has been saved on ${epic.key} yet.` };
+  return { epicKey: epic.key, report: reportForReader(stored.report, await hiddenEvidenceIds(deps.port, stored.pack)) };
 }

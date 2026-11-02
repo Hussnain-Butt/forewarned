@@ -21,8 +21,14 @@ export function fakeKvs({ failSet = () => false } = {}) {
   };
 }
 
-// The stored pre-mortem ({ pack, report }) of an epic, or undefined.
-export const storedOf = (kvs, epicKey) => kvs.data.get(`premortem:${epicKey}`)?.value;
+// The stored pre-mortem ({ pack, report }) of an epic, by issue ID, or undefined.
+export const storedOf = (kvs, epicId) => kvs.data.get(`premortem:${epicId}`)?.value;
+
+// The seed's issue ID for a key (storage is keyed by issue ID).
+export async function idOf(key) {
+  const { senders } = seedPort();
+  return (await (await senders.issue(key, ['summary'])).json()).id;
+}
 
 // Records every push, together with what the KVS held at that moment.
 export function fakeQueue(kvs) {

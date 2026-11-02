@@ -21,7 +21,7 @@ resolver.define('getPremortem', async ({ context }) => {
   }
   try {
     const port = createJira(forgeSenders(), { deadline: Date.now() + START_BUDGET_MS });
-    const { report, error } = await getPremortemAction({ deps: { port, kvs }, epicKey: issueKey, readerAccountId: context.accountId });
+    const { report, error } = await getPremortemAction({ deps: { port, kvs }, epicKey: issueKey });
     return { issueKey, report, error };
   } catch (error) {
     console.error('getPremortem failed:', error instanceof Error ? error.name : 'Unknown error');
@@ -48,9 +48,10 @@ resolver.define('startRun', async ({ context }) => {
   }
 });
 
+// The panel's own work item comes from the signed Forge context, so this needs no Jira read.
 resolver.define('getRunStatus', async ({ context }) => {
-  const epicKey = context.extension?.issue?.key;
-  return { status: epicKey ? await readRunStatus(kvs, epicKey) : null };
+  const epicId = context.extension?.issue?.id;
+  return { status: epicId ? await readRunStatus(kvs, String(epicId)) : null };
 });
 
 export const handler = resolver.getDefinitions();

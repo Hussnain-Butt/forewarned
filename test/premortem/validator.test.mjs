@@ -89,6 +89,19 @@ test('a reason with a web address or a markdown link is dropped', () => {
   }
 });
 
+// Like keys: a link the epic summary or a cited fact already holds is Jira content, not the
+// writer's own (the review found summaries with "www." dropping Forewarned's own reasons).
+test('a link copied from the epic summary or a cited fact is allowed', () => {
+  const pack = {
+    ...PACK,
+    epic: { ...PACK.epic, summary: 'Relaunch www.shop.example checkout' },
+    evidence: [...PACK.evidence, { id: 'E7', source: 'history', baseRate: false, fact: 'PLT-31 Fix redirect for https://pay.example/cb blocks CHK-143.', links: [{ key: 'PLT-31', summary: 'Fix redirect for https://pay.example/cb' }, { key: 'CHK-143', summary: 'Refund' }] }],
+  };
+  const copied = reason({ evidenceIds: ['E1', 'E7'], mitigation: 'Relaunch www.shop.example checkout after https://pay.example/cb is fixed.' });
+  assert.deepEqual(validateReasons([copied], pack).dropped, []);
+  assert.equal(validateReasons([reason({ evidenceIds: ['E1', 'E7'], mitigation: 'See https://pay.example/other first.' })], pack).dropped[0]?.code, 'link');
+});
+
 test('likelihood cap: High without a cited base rate becomes Medium and is kept (AC 14)', () => {
   const kept = keptOne(reason({ explanation: 'CHK-7 finished 42 days late.', evidenceIds: ['E2'], mitigation: 'Add buffer.' }));
   assert.equal(kept.likelihood, 'Medium');
