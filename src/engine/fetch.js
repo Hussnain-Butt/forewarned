@@ -154,7 +154,8 @@ async function childCounts(port, epic, now) {
 
 // Reads the Snapshot for one epic, or returns { error } with a message for the user. `now` is the
 // run's start time in milliseconds; `today` is its UTC day number. `onStep` is told the name of each
-// phase as it starts, for the run status the panel shows (story 003 AC 7).
+// phase as it starts (and, for "past epics", `{ count }`), for the run status the panel shows (story
+// 003 AC 7).
 export async function fetchSnapshot(port, requestedKey, { today, now, accountId, onStep = async () => {} }) {
   if (!ISSUE_KEY.test(requestedKey)) return { error: 'No valid epic key was given.' };
 
@@ -190,10 +191,11 @@ export async function fetchSnapshot(port, requestedKey, { today, now, accountId,
   const epic = toEpic(issue, moves, today);
   const candidates = candidateIssues.map((i) => toEpic(i, moves, today));
 
-  await onStep('past epics');
   // Phase 3: details of the comparable epics only. comparison.epics holds the same objects as
-  // candidates, so the details attached here become part of the Snapshot's candidates.
+  // candidates, so the details attached here become part of the Snapshot's candidates. The step
+  // carries the count, so the panel can say "Reading 8 past epics" (story 005 AC 5).
   const comparison = selectComparable(epic, candidates, today);
+  await onStep('past epics', { count: comparison.epics.length });
   await mapLimit(comparison.epics, async (e) => { e.details = { ...(await childCounts(port, e, now)), blocked: [] }; });
   const comparableKeys = comparison.epics.map((e) => e.key).filter((k) => ISSUE_KEY.test(k));
   if (linkTypeFound && comparableKeys.length) {

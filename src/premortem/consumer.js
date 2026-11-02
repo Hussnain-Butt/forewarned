@@ -38,7 +38,7 @@ export async function handleRun({ event, principal, senders, kvs: store, now = D
     log('Pre-mortem run skipped: replaced by a newer run, or already finished');
     return;
   }
-  const setStatus = (fields) => writeRunStatus(store, epicId, { runId, startedAt: current.startedAt, step: null, finishedAt: null, error: null, ...fields });
+  const setStatus = (fields) => writeRunStatus(store, epicId, { runId, startedAt: current.startedAt, step: null, count: null, finishedAt: null, error: null, ...fields });
   const fail = async (code, message) => {
     await setStatus({ status: 'failed', finishedAt: new Date(now()).toISOString(), error: message });
     log(`Pre-mortem run failed: ${code}`);
@@ -55,12 +55,13 @@ export async function handleRun({ event, principal, senders, kvs: store, now = D
     await fail('retried', 'The run took too long. Try again in a minute.');
     return;
   }
-  // One KVS write per step: a step the status already shows is not written again.
+  // One KVS write per step: a step the status already shows is not written again. "past epics"
+  // carries how many epics are read (story 005 AC 5).
   let shownStep = null;
-  const showStep = (step) => {
+  const showStep = (step, { count = null } = {}) => {
     if (step === shownStep) return undefined;
     shownStep = step;
-    return setStatus({ status: 'running', step });
+    return setStatus({ status: 'running', step, count });
   };
 
   try {

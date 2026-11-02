@@ -40,6 +40,13 @@ test('a run stores the pack and a version 2 report in KVS, and reports each step
   assert.deepEqual(report.ruleBased.reasons, ruleBasedReasons(pack));
 });
 
+test('the past-epics step carries how many epics are read (005 AC 5)', async () => {
+  const { kvs } = await run();
+  const running = kvs.writes.filter((w) => w.value.status === 'running');
+  assert.equal(running.find((w) => w.value.step === 'past epics').value.count, 8);
+  assert.ok(running.filter((w) => w.value.step !== 'past epics').every((w) => w.value.count === null));
+});
+
 test('an event replaced by a newer run does nothing', async () => {
   const { status, kvs } = await run({ statusRunId: 'r2' });
   assert.equal(status.runId, 'r2');
