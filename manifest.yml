@@ -5,8 +5,8 @@ modules:
       resolver:
         function: resolver
       render: native
-      title: forewarned
-      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      title: Forewarned
+      icon: resource:icons;forewarned.svg
       displayConditions:
         jiraExpression: 'issue.issueType.hierarchyLevel == 1'
   rovo:agent:
@@ -116,6 +116,8 @@ modules:
 resources:
   - key: main
     path: src/frontend/index.jsx
+  - key: icons
+    path: static/icons
 permissions:
   # The queue consumer reads Jira as the user who started the run, through offline user
   # impersonation (story 003; story 002 open question 1). It writes only to Forge KVS (storage:app),

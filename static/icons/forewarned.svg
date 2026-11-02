@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Forewarned">
+  <rect width="24" height="24" rx="5" fill="#0C66E4"/>
+  <path d="M8 5v14" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <path d="M9 5.5l8.5 3.25L9 12z" fill="#FFFFFF"/>
+</svg>
