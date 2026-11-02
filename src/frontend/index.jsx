@@ -222,8 +222,32 @@ const App = () => {
   );
 };
 
+// A render error shows a message instead of Jira's endless loading bars (story 005 AC 28).
+class PanelErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    return (
+      <SectionMessage appearance="error">
+        <Text>{`Forewarned couldn't show this panel (${error.name}: ${error.message}). Reload the page to try again.`}</Text>
+      </SectionMessage>
+    );
+  }
+}
+
 ForgeReconciler.render(
   <React.StrictMode>
-    <App />
+    <PanelErrorBoundary>
+      <App />
+    </PanelErrorBoundary>
   </React.StrictMode>
 );
