@@ -6,6 +6,7 @@ import { keysIn, numbersIn, parseReasonsJson, validateReasons } from '../../src/
 
 const PACK = {
   packId: 'p1',
+  epic: { key: 'CHK-12', summary: 'Release 3.1 checkout' },
   evidence: [
     { id: 'E1', source: 'history', baseRate: true, fact: '5 of 6 comparable epics with a due date finished late (83%; 1 on time), by a median of 21 days (from 12 to 42 days).', links: [{ key: 'CHK-7', summary: 'Wallet top-up' }] },
     { id: 'E2', source: 'history', baseRate: false, fact: 'CHK-7 Wallet top-up was due 15 Jun 2026 and finished 27 Jul 2026, 42 days late.', links: [{ key: 'CHK-7', summary: 'Wallet top-up' }] },
@@ -101,4 +102,9 @@ test('only validated fields are kept; extra fields need an explicit keep list (A
   assert.deepEqual(Object.keys(kept).sort(), ['evidenceIds', 'explanation', 'likelihood', 'mitigation', 'title']);
   const trusted = validateReasons([reason({ ruleId: 'slip-base-rate' })], PACK, { keep: ['ruleId'] }).kept[0];
   assert.equal(trusted.ruleId, 'slip-base-rate');
+});
+
+test("the epic's own key and summary are known in every reason", () => {
+  assert.ok(keptOne(reason({ title: 'Epics like Release 3.1 checkout usually finish late', mitigation: 'Plan CHK-12 for the median slip of 21 days.' })));
+  assert.equal(droppedCode(reason({ mitigation: 'Plan CHK-13 for the median slip of 21 days.' })), 'unknown-key');
 });

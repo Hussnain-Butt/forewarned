@@ -28,7 +28,8 @@ export function rankPeople(epic) {
 // Plain code-unit order: unlike localeCompare it gives the same order in every runtime (AC 31).
 const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
-const draft = (type, fact, links, numbers) => ({ type, signal: 'load', fact, links, baseRate: false, numbers });
+// `about` names the person, so the rule-based reasons (story 004) never parse fact text.
+const draft = (type, fact, links, numbers, about) => ({ type, signal: 'load', fact, links, baseRate: false, numbers, ...(about ? { about } : {}) });
 
 // Returns the load check and its drafts: one per person (first 10), then the unassigned work.
 export function loadSignal(snapshot) {
@@ -57,7 +58,7 @@ export function loadSignal(snapshot) {
       peopleOnEpic: people.length,
       medianOpen: median,
       otherEpicsInProgress: others.length,
-    }));
+    }, { name: person.displayName }));
   }
 
   // AC 20: unassigned open work, counted exactly by fetch (not only from the capped read).

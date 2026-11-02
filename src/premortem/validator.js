@@ -57,7 +57,7 @@ function cut(text, max) {
 const text = (value) => (typeof value === 'string' ? value.trim() : '');
 
 // Checks one reason; returns { reason } or { code } (the drop code).
-function check(input, byId, keep) {
+function check(input, byId, epic, keep) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return { code: 'not-an-object', title: '' };
   const title = cut(text(input.title), LIMITS.title);
   if (!title) return { code: 'missing-title', title };
@@ -73,12 +73,13 @@ function check(input, byId, keep) {
   const cited = evidenceIds.map((id) => byId.get(id));
   if (!cited.some((item) => item.source === 'history')) return { code: 'no-history-evidence', title };
 
-  // AC 12–13: every number and key in the reason must come from what it cites.
+  // AC 12–13: every number and key in the reason must come from what it cites. The epic itself
+  // (its key and summary) is the subject of the whole pack, so it is always known.
   const written = `${title} ${explanation} ${mitigation}`;
-  const sources = cited.flatMap((item) => [item.fact, ...(item.links ?? []).map((l) => l.summary)]);
+  const sources = [epic?.summary, ...cited.flatMap((item) => [item.fact, ...(item.links ?? []).map((l) => l.summary)])];
   const knownNumbers = new Set(sources.flatMap((s) => [...numbersIn(s)]));
   if ([...numbersIn(written)].some((n) => !knownNumbers.has(n))) return { code: 'unknown-number', title };
-  const knownKeys = new Set(cited.flatMap((item) => [...keysIn(item.fact), ...(item.links ?? []).map((l) => l.key)]));
+  const knownKeys = new Set([epic?.key, ...cited.flatMap((item) => [...keysIn(item.fact), ...(item.links ?? []).map((l) => l.key)])]);
   if ([...keysIn(written)].some((k) => !knownKeys.has(k))) return { code: 'unknown-key', title };
 
   // AC 14: High needs a cited base rate.
@@ -97,7 +98,7 @@ export function validateReasons(reasons, pack, { keep = [] } = {}) {
   const dropped = [];
   const titles = new Set();
   for (const input of reasons) {
-    const result = check(input, byId, keep);
+    const result = check(input, byId, pack.epic, keep);
     let code = result.code;
     if (!code && titles.has(result.reason.title.toLowerCase())) code = 'duplicate';
     if (!code && kept.length === MAX_KEPT) code = 'over-five';

@@ -57,6 +57,7 @@ export function computePack(snapshot) {
       links: d.links.map((l) => ({ key: l.key, summary: shorten(l.summary), url: url(l.key) })),
       baseRate: d.baseRate,
       numbers: d.numbers,
+      ...(d.about ? { about: d.about } : {}),
     })),
     notes: dropped
       ? [...snapshot.notes, `Dropped ${dropped} weaker evidence items to keep the pack within ${MAX_ITEMS} items and 24,000 bytes.`]

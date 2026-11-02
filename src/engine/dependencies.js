@@ -8,7 +8,8 @@ const MAX_HISTORY = 3;
 const MAX_LINKS = 10;
 
 const link = (x) => ({ key: x.key, summary: x.summary });
-const draft = (type, fact, links, baseRate, numbers) => ({ type, signal: 'dependencies', fact, links, baseRate, numbers });
+// `about` names what the item is about, so the rule-based reasons (story 004) never parse fact text.
+const draft = (type, fact, links, baseRate, numbers, about) => ({ type, signal: 'dependencies', fact, links, baseRate, numbers, ...(about ? { about } : {}) });
 
 // Returns the dependency check and its drafts: open blockers (at most 5), the history per blocking
 // space (at most 3), then the strongest past example.
@@ -36,7 +37,7 @@ export function dependencySignal(snapshot, comparison) {
     if (b.due !== null) due = daysOverdue > 0 ? `due ${formatDay(b.due)}, ${counted(daysOverdue, 'day')} overdue` : `due ${formatDay(b.due)}`;
     const target = child.key === epic.key ? 'this epic' : `${child.key} ${shorten(child.summary)} in this epic`;
     drafts.push(draft('open-blocker', `${b.key} ${shorten(b.summary)} (${b.space}, ${b.statusName}, ${b.assignee?.displayName ?? 'unassigned'}, ${due}) blocks ${target}.`,
-      [link(b), link(child)], false, { daysOverdue }));
+      [link(b), link(child)], false, { daysOverdue }, { space: b.space, blocker: b.key, unassigned: b.assignee === null }));
   }
 
   // AC 24: per blocking space, how many comparable epics with blocked work finished late. Only
@@ -52,7 +53,7 @@ export function dependencySignal(snapshot, comparison) {
     const n = epics.length;
     const k = epics.filter((e) => e.finish - e.due > 0).length;
     drafts.push(draft('blocker-history', `${k} of ${counted(n, 'comparable epic')} that had work blocked by ${space} work items finished late (${percent(k, n)}%; ${n - k} on time).`,
-      epics.slice(0, MAX_LINKS).map(link), n >= 2, { late: k, epics: n }));
+      epics.slice(0, MAX_LINKS).map(link), n >= 2, { late: k, epics: n }, { space }));
   }
 
   // AC 25: the late comparable epic whose blocker was itself resolved after its own due date.
