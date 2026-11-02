@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import {
-  Box, Button, Heading, Inline, Link, LinkButton, List, ListItem, Lozenge, SectionMessage, Stack, Text, Tooltip, User, xcss,
+  Box, Button, Heading, Inline, Link, LinkButton, List, ListItem, Lozenge, SectionMessage, Stack, Tab, TabList, TabPanel, Tabs,
+  Text, Tooltip, User, xcss,
 } from '@forge/react';
 import { dayOf, formatDay } from '../engine/format.js';
 import {
-  cardParts, checkLines, comparisonParts, exactTime, headline, historyLine, isOld, likelihoodLozenge, relativeTime,
+  cardParts, checkLines, comparisonParts, droppedLine, exactTime, headline, historyLine, isOld, likelihoodLozenge,
+  relativeTime, sortByLikelihood,
 } from './text.js';
 
 // Story 005 AC 8–16 and 22–23, 27: the stored report as the reader may see it.
@@ -133,8 +135,28 @@ const RunInfo = ({ report, now }) => (
   </Inline>
 );
 
-// The headline, the notes, the reasons, the comparison set and who ran it.
-export const Report = ({ panel, now }) => {
+// The agent's write-up (AC 20–21): only when it was written on this evidence run, in likelihood
+// order, with the drop count.
+const AgentWriteUp = ({ agent, evidenceById, epicKey }) => {
+  if (agent.stale) {
+    return (
+      <SectionMessage appearance="information">
+        <Text>The agent&apos;s write-up is based on an earlier run. Ask the agent again to update it.</Text>
+      </SectionMessage>
+    );
+  }
+  const dropped = droppedLine(agent);
+  return (
+    <Stack space="space.100">
+      <ReasonList label="Written by the Forewarned agent in Rovo and checked against the evidence" reasons={sortByLikelihood(agent.reasons)} evidenceById={evidenceById} epicKey={epicKey} />
+      {dropped ? <Text size="small" color="color.text.subtle">{dropped}</Text> : null}
+    </Stack>
+  );
+};
+
+// The headline, the notes, the reasons (in two tabs once the agent has written), the comparison
+// set and who ran it. `tab` is 0 for the agent's write-up and 1 for the rule-based list.
+export const Report = ({ panel, now, tab, onTabChange }) => {
   const { report, epic, comparison, issueKey } = panel;
   const space = spaceOf(issueKey);
   const evidenceById = new Map((panel.evidence || []).map((item) => [item.id, item]));
@@ -155,7 +177,22 @@ export const Report = ({ panel, now }) => {
       {report.status === 'no-signals' ? (
         <Checks intro="No strong risk signals found in this history. Here is what Forewarned checked." checks={report.checks} />
       ) : null}
-      <ReasonList label="From your Jira history (rule-based, no AI)" reasons={report.ruleBased?.reasons} evidenceById={evidenceById} epicKey={issueKey} />
+      {report.agent ? (
+        <Tabs id="forewarned-tabs" selected={tab} onChange={onTabChange}>
+          <TabList>
+            <Tab>Agent write-up</Tab>
+            <Tab>Rule-based</Tab>
+          </TabList>
+          <TabPanel>
+            <AgentWriteUp agent={report.agent} evidenceById={evidenceById} epicKey={issueKey} />
+          </TabPanel>
+          <TabPanel>
+            <ReasonList label="From your Jira history (rule-based, no AI)" reasons={report.ruleBased?.reasons} evidenceById={evidenceById} epicKey={issueKey} />
+          </TabPanel>
+        </Tabs>
+      ) : (
+        <ReasonList label="From your Jira history (rule-based, no AI)" reasons={report.ruleBased?.reasons} evidenceById={evidenceById} epicKey={issueKey} />
+      )}
       {comparison ? <ComparisonSet comparison={comparison} space={space} /> : null}
       <RunInfo report={report} now={now} />
     </Stack>

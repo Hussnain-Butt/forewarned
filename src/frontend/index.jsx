@@ -1,14 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ForgeReconciler, { Button, Inline, SectionMessage, SectionMessageAction, Spinner, Stack, Text } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { invoke, rovo } from '@forge/bridge';
 import { Report } from './report.jsx';
 import { RunSteps } from './running.jsx';
 
-// The Forewarned epic panel (story 005): run the pre-mortem, follow its steps, read the report.
+// The Forewarned epic panel (story 005): run the pre-mortem, follow its steps, read the report, and
+// ask the Forewarned agent in Rovo for its write-up.
 
 const RUN_POLL_MS = 2000;
 const SLOW_AFTER_MS = 60 * 1000;
 const RUN_LIMIT_MS = 5 * 60 * 1000;
+const AGENT_POLL_MS = 5000;
+const AGENT_LIMIT_MS = 3 * 60 * 1000;
+const AGENT = { type: 'forge', agentName: 'Forewarned', agentKey: 'forewarned-agent' };
+const AGENT_TAB = 0;
+const RULE_TAB = 1;
 const LOAD_ERROR = "Forewarned couldn't load the pre-mortem. Try again in a minute.";
 const START_ERROR = "Forewarned couldn't start the run. Try again in a minute.";
 const NOT_AN_EPIC = 'This panel works on epics only.';
@@ -20,6 +26,16 @@ const App = () => {
   const [run, setRun] = useState(null);
   const following = useRef(false);
   const lastCount = useRef(null);
+  const [rovoEnabled, setRovoEnabled] = useState(null);
+  // 'waiting' while the panel checks for the agent's write-up, 'expired' after 3 minutes.
+  const [agentWait, setAgentWait] = useState(null);
+  const [agentReady, setAgentReady] = useState(false);
+  const [tab, setTab] = useState(AGENT_TAB);
+  const tabRef = useRef(AGENT_TAB);
+  const selectTab = (index) => {
+    tabRef.current = index;
+    setTab(index);
+  };
 
   const load = () => invoke('getPanel')
     .then((result) => setPanel(result))
@@ -71,8 +87,48 @@ const App = () => {
     await follow(startedAt);
   };
 
+  // AC 19: a new agent write-up replaces the panel's data. A reader on the Rule-based tab gets a
+  // notice instead of being moved away from what they are reading.
+  const showNewWriteUp = (result, hadTabs) => {
+    setPanel(result);
+    setAgentWait(null);
+    if (hadTabs && tabRef.current === RULE_TAB) setAgentReady(true);
+    else selectTab(AGENT_TAB);
+  };
+
+  // AC 19: checks for the agent's write-up every 5 s for at most 3 minutes, without a reload.
+  const waitForAgent = async (savedBefore, hadTabs) => {
+    setAgentWait('waiting');
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < AGENT_LIMIT_MS) {
+      await wait(AGENT_POLL_MS);
+      const result = await invoke('getPanel').catch(() => null);
+      const savedAt = result?.report?.agent?.savedAt;
+      if (savedAt && savedAt !== savedBefore) {
+        showNewWriteUp(result, hadTabs);
+        return;
+      }
+    }
+    setAgentWait('expired');
+  };
+
+  const checkAgainForAgent = async () => {
+    const savedBefore = panel?.report?.agent?.savedAt ?? null;
+    const result = await invoke('getPanel').catch(() => null);
+    const savedAt = result?.report?.agent?.savedAt;
+    if (savedAt && savedAt !== savedBefore) showNewWriteUp(result, Boolean(panel?.report?.agent));
+  };
+
+  // AC 17: opens Rovo chat with the Forewarned agent and the epic.
+  const openAgent = () => {
+    setAgentReady(false);
+    rovo.open({ ...AGENT, prompt: `Write the pre-mortem for epic ${panel.issueKey}.` });
+    waitForAgent(panel.report?.agent?.savedAt ?? null, Boolean(panel.report?.agent));
+  };
+
   useEffect(() => {
     load();
+    rovo.isEnabled().then(setRovoEnabled).catch(() => setRovoEnabled(false));
     invoke('getRunStatus').then(({ status }) => {
       if (['queued', 'running'].includes(status?.status)) {
         setRun({ status, slow: false });
@@ -114,7 +170,26 @@ const App = () => {
           <Text color="color.text.subtle">It reads finished epics in this space and this epic&apos;s work items, links and assignees. Nothing leaves Atlassian.</Text>
         </Stack>
       ) : null}
-      {report ? <Report panel={panel} now={Date.now()} /> : null}
+      {agentReady ? (
+        <SectionMessage appearance="information" actions={<SectionMessageAction onClick={() => { selectTab(AGENT_TAB); setAgentReady(false); }}>Show it</SectionMessageAction>}>
+          <Text>The agent&apos;s write-up is ready.</Text>
+        </SectionMessage>
+      ) : null}
+      {report ? <Report panel={panel} now={Date.now()} tab={tab} onTabChange={selectTab} /> : null}
+      {agentWait === 'waiting' ? (
+        <Inline space="space.100" alignBlock="center">
+          <Spinner size="small" label="Waiting" />
+          <Text>Waiting for the Forewarned agent to save its write-up…</Text>
+        </Inline>
+      ) : null}
+      {agentWait === 'expired' ? (
+        <Text color="color.text.subtle">The Forewarned agent hasn&apos;t saved a write-up yet.</Text>
+      ) : null}
+      {rovoEnabled === false ? (
+        <SectionMessage appearance="information">
+          <Text>Rovo isn&apos;t turned on for this site, so the agent write-up isn&apos;t available. The rule-based pre-mortem works without it.</Text>
+        </SectionMessage>
+      ) : null}
       {canRun ? null : (
         <Text color="color.text.subtle">You need permission to edit this epic to run a pre-mortem. Ask a space admin.</Text>
       )}
@@ -122,6 +197,10 @@ const App = () => {
         <Button appearance={report ? 'default' : 'primary'} onClick={startRun} isDisabled={running || !canRun}>
           {report ? 'Re-run' : 'Run pre-mortem'}
         </Button>
+        {rovoEnabled && report ? (
+          <Button appearance="rovo" onClick={openAgent} isDisabled={running || agentWait === 'waiting'}>Write with Forewarned agent</Button>
+        ) : null}
+        {agentWait === 'expired' ? <Button onClick={checkAgainForAgent}>Check again</Button> : null}
       </Inline>
     </Stack>
   );
