@@ -63,12 +63,13 @@ export function slipSignal(snapshot, comparison) {
     // AC 13: every comparable epic counts here, with or without a due date.
     const n = epics.length;
     const withoutDue = epics.filter((e) => e.due === null).length;
+    const median = roundedMedian(epics.map((e) => e.duration));
     drafts.push(draft(
       'duration-base-rate',
-      `Comparable epics took a median of ${roundedMedian(epics.map((e) => e.duration))} days from start to done (${n} epics: ${n - withoutDue} with a due date and ${withoutDue} without).`,
+      `Comparable epics took a median of ${median} days from start to done (${n} epics: ${n - withoutDue} with a due date and ${withoutDue} without).`,
       epics.slice(0, MAX_LINKS).map(link),
       true,
-      { medianDurationDays: roundedMedian(epics.map((e) => e.duration)), epics: n, withDueDate: n - withoutDue, withoutDueDate: withoutDue },
+      { medianDurationDays: median, epics: n, withDueDate: n - withoutDue, withoutDueDate: withoutDue },
     ));
   }
 

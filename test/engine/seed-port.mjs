@@ -4,7 +4,8 @@
 // work item without a resolution date), `extraMoves` ([{ day, status }] added to its history) and
 // `rawCreated` (the created value as sent). Options: `statusIds: false` sends history items without
 // status IDs (as an import might), `hidden` keys are left out of bulk fetches (spaces the user can't
-// see), `failCountFor` makes that account's count fail with 400, and `aliases` maps old keys.
+// see), `failCountFor` makes that account's count fail with 400, `failCount(jql)` makes matching
+// counts fail with 500, and `aliases` maps old keys.
 
 import { join } from 'node:path';
 import { DEMO_FILE, SEED_DIR, loadSeed, readJson } from '../../scripts/seed/test/helpers.mjs';
@@ -31,7 +32,7 @@ const keyList = (text) => text.split(',').map((k) => k.trim().replace(/^"|"$/g, 
 
 export function seedPort({
   edit, linkTypes = [BLOCKS], today = SEED_TODAY, now = Date.parse(`${SEED_TODAY}T08:00:00.000Z`),
-  statusIds = true, hidden = [], failCountFor = null, aliases = {},
+  statusIds = true, hidden = [], failCountFor = null, aliases = {}, failCount = () => false,
 } = {}) {
   const records = loadSeed(demo);
   edit?.(records);
@@ -138,6 +139,7 @@ export function seedPort({
     },
     count: async (jql) => {
       log.push(jql);
+      if (failCount(jql)) return json({ errorMessages: ['Internal server error'] }, 500);
       const n = countOf(jql);
       if (n === 'fail') return json({ errorMessages: ['The value does not exist for the field assignee.'] }, 400);
       return n === null ? json({ errorMessages: [`Unknown JQL in the seed port: ${jql}`] }, 400) : json({ count: n });

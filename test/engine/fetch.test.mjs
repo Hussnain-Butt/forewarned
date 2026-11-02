@@ -15,7 +15,7 @@ const EPIC = keyOf('ll-chk-e11');
 const HIDDEN_NOTE = "Some links point to spaces you can't see.";
 const fetchSeed = async (options = {}, key = EPIC) => {
   const { senders, log } = seedPort({ now: NOW, ...options });
-  const port = createJira(senders, { deadline: Infinity });
+  const port = createJira(senders, { deadline: Infinity, sleep: async () => {} });
   const result = await fetchSnapshot(port, key, { today: TODAY, now: NOW, accountId: 'acc-requester' });
   return { ...result, port, log };
 };
@@ -150,4 +150,19 @@ test('AC 33: a wide epic (25 people, 20 comparable epics, busy people) stays wit
   const { snapshot, port } = await fetchSeed({ edit });
   assert.equal(snapshot.epic.people.length, 25);
   assert.ok(port.requestCount <= 150, `${port.requestCount} requests`);
+});
+
+test('an epic that started today counts all its children as there at the start, without a bound query', async () => {
+  const { snapshot, log } = await fetchSeed({ edit: (records) => { records.get('ll-chk-e11').start = 0; } });
+  assert.equal(snapshot.epic.childCountAtStart, snapshot.epic.childCount);
+  assert.ok(!log.some((jql) => jql.startsWith(`parent = "${EPIC}" AND created <`)));
+});
+
+test('the first failed request stops the other workers', async () => {
+  const first = seedSnapshot().candidates[0].key;
+  const { senders, log } = seedPort({ now: NOW, failCount: (jql) => jql === `parent = "${first}"` });
+  const port = createJira(senders, { deadline: Infinity, sleep: async () => {} });
+  await assert.rejects(fetchSnapshot(port, EPIC, { today: TODAY, now: NOW, accountId: 'acc-requester' }), (e) => e.status === 500);
+  // 5 workers start 5 comparable epics (2 counts each); the failure and its one retry stop the other 3.
+  assert.ok(log.filter((jql) => /^parent = "[A-Z]+-\d+"( AND created < "-\d+m")?$/.test(jql)).length <= 11);
 });
