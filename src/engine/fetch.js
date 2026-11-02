@@ -71,7 +71,7 @@ async function searchPages(port, body, maxPages) {
 const count = async (port, jql) => (await port.count(jql)).count;
 
 // Reads work items by key in batches of 100. Keys the user can't see are simply not returned.
-async function readVisible(port, keys, fields) {
+export async function readVisible(port, keys, fields) {
   const chunks = [];
   for (let i = 0; i < keys.length; i += PAGE) chunks.push(keys.slice(i, i + PAGE));
   const pages = await mapLimit(chunks, (chunk) => port.bulkIssues({ issueIdsOrKeys: chunk, fields }));

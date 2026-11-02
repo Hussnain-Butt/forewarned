@@ -38,6 +38,9 @@ const Report = ({ report }) => {
   const { ruleBased, agent, status, checks } = report;
   return (
     <Stack space="space.200">
+      {report.hiddenForReader ? (
+        <SectionMessage appearance="information">Some reasons are hidden because they name work items you can&apos;t see.</SectionMessage>
+      ) : null}
       {agent ? (
         <Stack space="space.150">
           <Heading size="small">Pre-mortem from the Forewarned agent</Heading>
@@ -72,15 +75,22 @@ const App = () => {
     .then((result) => setState({ loading: false, ...result }))
     .catch(() => setState({ loading: false, error: "The pre-mortem couldn't be loaded." }));
 
-  // Polls the run status every 2 s (at most 5 minutes) and reloads the report when it is done.
-  const follow = async (runId, clickedAt) => {
+  // Polls the epic's run status every 2 s (at most 5 minutes) and reloads the report when it is
+  // done. It follows whichever run the status shows, so a double click can't strand it.
+  const follow = async (clickedAt) => {
     if (polling.current) return;
     polling.current = true;
     try {
       while (Date.now() - clickedAt < POLL_LIMIT_MS) {
         await wait(POLL_MS);
-        const { status } = await invoke('getRunStatus');
-        if (!status || status.runId !== runId) continue;
+        let status;
+        try {
+          ({ status } = await invoke('getRunStatus'));
+        } catch {
+          setRun({ error: "The run status couldn't be read. Click Refresh to see the latest report." });
+          return;
+        }
+        if (!status) continue;
         if (status.status === 'done') {
           await load();
           setRun({ seconds: Math.round((Date.now() - clickedAt) / 1000) });
@@ -106,7 +116,7 @@ const App = () => {
       setRun({ error: started.error });
       return;
     }
-    await follow(started.runId, clickedAt);
+    await follow(clickedAt);
   };
 
   useEffect(() => {
@@ -116,7 +126,7 @@ const App = () => {
     invoke('getRunStatus').then(({ status }) => {
       if (status && ['queued', 'running'].includes(status.status)) {
         setRun({ step: status.step ?? 'queued' });
-        follow(status.runId, Date.now());
+        follow(Date.now());
       }
     }).catch(() => {});
   }, []);

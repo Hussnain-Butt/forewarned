@@ -6,6 +6,7 @@ import { withAgentWriteUp } from './report.js';
 import { isRunInProgress, startRun } from './run.js';
 import { EVIDENCE_PROPERTY, REPORT_PROPERTY, readProperty, readRunStatus, writeProperty } from './store.js';
 import { parseReasonsJson, validateReasons } from './validator.js';
+import { hiddenEvidenceIds, packForReader, reportForReader } from './visibility.js';
 
 const IN_PROGRESS = 'A new evidence run is in progress. Wait a moment, then call get-evidence again.';
 const noEvidence = (epicKey) => `No evidence found for ${epicKey}. Call run-premortem first.`;
@@ -21,11 +22,13 @@ export async function runPremortemAction({ deps, epicKey, accountId }) {
   return { epicKey, ...result, message };
 }
 
-// get-evidence: the stored pack, so the agent cites exactly what submit-premortem checks against.
-export async function getEvidenceAction({ deps, epicKey }) {
+// get-evidence: the stored pack, so the agent cites exactly what submit-premortem checks against,
+// without the evidence the reader can't see (story 002 AC 2).
+export async function getEvidenceAction({ deps, epicKey, readerAccountId }) {
   if (await running(deps, epicKey)) return { error: IN_PROGRESS };
   const pack = await readProperty(deps.port, epicKey, EVIDENCE_PROPERTY);
-  return pack ? { epicKey, ...pack } : { error: noEvidence(epicKey) };
+  if (!pack) return { error: noEvidence(epicKey) };
+  return { epicKey, ...packForReader(pack, await hiddenEvidenceIds(deps.port, pack, readerAccountId)) };
 }
 
 // submit-premortem: validates the agent's reasons against the stored pack (AC 19) and stores only
@@ -56,8 +59,11 @@ export async function submitPremortemAction({ deps, epicKey, reasonsJson, packId
   return { saved: true, epicKey, savedReasons: kept.length, dropped };
 }
 
-// get-premortem: the stored version 2 report.
-export async function getPremortemAction({ deps, epicKey }) {
+// get-premortem (and the panel): the stored version 2 report, without the reasons built on
+// evidence the reader can't see (story 002 AC 2).
+export async function getPremortemAction({ deps, epicKey, readerAccountId }) {
   const report = await readProperty(deps.port, epicKey, REPORT_PROPERTY);
-  return report ? { epicKey, report } : { epicKey, report: null, message: `No pre-mortem has been saved on ${epicKey} yet.` };
+  if (!report) return { epicKey, report: null, message: `No pre-mortem has been saved on ${epicKey} yet.` };
+  const pack = await readProperty(deps.port, epicKey, EVIDENCE_PROPERTY);
+  return { epicKey, report: reportForReader(report, await hiddenEvidenceIds(deps.port, pack, readerAccountId)) };
 }
