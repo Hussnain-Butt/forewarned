@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { compareKeys, dayOf, formatCount, formatDay, isoDay, percent, roundedMedian, shorten } from '../../src/engine/format.js';
+import { compareKeys, counted, dayOf, formatCount, formatDay, isoDay, percent, roundedMedian, shorten } from '../../src/engine/format.js';
 
 test('dayOf reads date-only, date-time and epoch values as the same UTC day', () => {
   const day = dayOf('2026-03-12');
@@ -48,4 +48,12 @@ test('a missing or unreadable date gives null instead of NaN', () => {
   assert.equal(dayOf('not a date'), null);
   assert.equal(dayOf(undefined), null);
   assert.equal(dayOf(null), null);
+});
+
+test('counted() writes the noun in the right number', () => {
+  assert.equal(counted(1, 'work item'), '1 work item');
+  assert.equal(counted(5121, 'work item'), '5,121 work items');
+  assert.equal(counted(1, 'person', 'people'), '1 person');
+  assert.equal(counted(2, 'person', 'people'), '2 people');
+  assert.equal(counted(0, 'day'), '0 days');
 });

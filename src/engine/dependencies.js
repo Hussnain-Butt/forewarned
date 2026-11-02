@@ -1,7 +1,7 @@
 // Signal 4, dependencies and blockers (story 002 AC 23–25): what blocks the epic now, and how
 // comparable epics fared when their work was blocked by other spaces.
 
-import { compareKeys, formatDay, percent, shorten } from './format.js';
+import { compareKeys, counted, formatDay, percent, shorten } from './format.js';
 
 const MAX_OPEN = 5;
 const MAX_HISTORY = 3;
@@ -33,7 +33,7 @@ export function dependencySignal(snapshot, comparison) {
     || compareKeys(x.b.key, y.b.key) || compareKeys(x.child.key, y.child.key));
   for (const { child, b, daysOverdue } of open.slice(0, MAX_OPEN)) {
     let due = 'no due date';
-    if (b.due !== null) due = daysOverdue > 0 ? `due ${formatDay(b.due)}, ${daysOverdue} days overdue` : `due ${formatDay(b.due)}`;
+    if (b.due !== null) due = daysOverdue > 0 ? `due ${formatDay(b.due)}, ${counted(daysOverdue, 'day')} overdue` : `due ${formatDay(b.due)}`;
     const target = child.key === epic.key ? 'this epic' : `${child.key} ${shorten(child.summary)} in this epic`;
     drafts.push(draft('open-blocker', `${b.key} ${shorten(b.summary)} (${b.space}, ${b.statusName}, ${b.assignee?.displayName ?? 'unassigned'}, ${due}) blocks ${target}.`,
       [link(b), link(child)], false, { daysOverdue }));
@@ -51,7 +51,7 @@ export function dependencySignal(snapshot, comparison) {
   for (const [space, epics] of history.slice(0, MAX_HISTORY)) {
     const n = epics.length;
     const k = epics.filter((e) => e.finish - e.due > 0).length;
-    drafts.push(draft('blocker-history', `${k} of ${n} comparable epics that had work blocked by ${space} work items finished late (${percent(k, n)}%; ${n - k} on time).`,
+    drafts.push(draft('blocker-history', `${k} of ${counted(n, 'comparable epic')} that had work blocked by ${space} work items finished late (${percent(k, n)}%; ${n - k} on time).`,
       epics.slice(0, MAX_LINKS).map(link), n >= 2, { late: k, epics: n }));
   }
 
@@ -71,7 +71,7 @@ export function dependencySignal(snapshot, comparison) {
   if (examples.length) {
     const { e, child, b, daysLate, after } = examples[0];
     drafts.push(draft('blocker-example',
-      `${e.key} ${shorten(e.summary)} finished ${daysLate} days late; its work item ${child.key} ${shorten(child.summary)} was blocked by ${b.key} ${shorten(b.summary)}, which was resolved ${after} days after its own due date.`,
+      `${e.key} ${shorten(e.summary)} finished ${counted(daysLate, 'day')} late; its work item ${child.key} ${shorten(child.summary)} was blocked by ${b.key} ${shorten(b.summary)}, which was resolved ${counted(after, 'day')} after its own due date.`,
       [link(e), link(child), link(b)], false, { daysLate, blockerDaysAfterOwnDue: after }));
   }
 

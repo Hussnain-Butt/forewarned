@@ -66,3 +66,14 @@ test('"0 of 6 … finished late" still links the epics it counted (AC 26)', () =
   const onTime = (c) => ({ ...c, epics: c.epics.map((e) => (e.due === null ? e : { ...e, due: e.finish + 3 })) });
   assert.equal(run(seedSnapshot(), onTime).drafts[0].links.length, 6);
 });
+
+test('a slip of one day is "1 day late"', () => {
+  // Every other epic on time, so Wallet top-up's one-day slip is the only example.
+  const oneDay = (c) => ({ ...c, epics: c.epics.map((e) => {
+    if (e.key === keyOf('ll-chk-e07')) return { ...e, due: e.finish - 1 };
+    return e.due === null ? e : { ...e, due: e.finish + 3 };
+  }) });
+  const { drafts } = run(seedSnapshot(), oneDay);
+  assert.match(drafts.find((d) => d.type === 'slip-example').fact, /, 1 day late\.$/);
+  assert.match(drafts[0].fact, /^1 of 6 comparable epics with a due date finished late \(17%; 5 on time\), by 1 day\.$/);
+});

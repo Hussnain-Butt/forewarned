@@ -43,7 +43,7 @@ test('comparable epics with no work items at their start are left out of the med
   const base = run(seedSnapshot(), emptyFirst).drafts.find((d) => d.type === 'scope-base-rate');
   assert.equal(base.numbers.leftOut, 1);
   assert.equal(base.numbers.epics, 7);
-  assert.match(base.fact, /\(7 epics, from \d+% to \d+%; 1 left out because they had no work items at their start\)\.$/);
+  assert.match(base.fact, /\(7 epics, from \d+% to \d+%; 1 left out because it had no work items at its start\)\.$/);
 });
 
 test('fewer than 3 comparable epics: no scope base rate', () => {
@@ -55,4 +55,9 @@ test('fewer than 3 comparable epics: no scope base rate', () => {
 test('counts of 1,000 or more get commas (AC 27)', () => {
   assert.equal(run(withEpic({ childCount: 5121, childCountAtStart: 4000 })).drafts[0].fact,
     `${KEY} started on 19 Oct 2026 with 4,000 work items and has gained 1,121 since, 28% more; it now has 5,121.`);
+});
+
+test('one work item at the start is singular', () => {
+  assert.equal(run(withEpic({ childCount: 5121, childCountAtStart: 1 })).drafts[0].fact,
+    `${KEY} started on 19 Oct 2026 with 1 work item and has gained 5,120 since, 512000% more; it now has 5,121.`);
 });

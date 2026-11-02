@@ -50,3 +50,6 @@ export function compareKeys(a, b) {
   const [spaceB, numberB] = b.split('-');
   return spaceA === spaceB ? Number(numberA) - Number(numberB) : spaceA < spaceB ? -1 : 1;
 }
+
+// The count with its noun in the right number: "1 work item", "5,121 work items", "1 person".
+export const counted = (n, singular, plural = `${singular}s`) => `${formatCount(n)} ${n === 1 ? singular : plural}`;

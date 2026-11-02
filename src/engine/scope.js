@@ -4,7 +4,7 @@
 // Children "at the start" are those created on or before the epic's start day; the importer stamps
 // parent links with the import date (M0c), so parent changes are never read.
 
-import { formatCount, formatDay, percent, roundedMedian } from './format.js';
+import { counted, formatCount, formatDay, percent, roundedMedian } from './format.js';
 
 const MIN_EPICS = 3;
 const MAX_LINKS = 10;
@@ -20,7 +20,7 @@ export function scopeSignal(snapshot, comparison) {
   const a = epic.childCountAtStart;
   const t = epic.childCount;
   const n = formatCount;
-  const started = `${epic.key} started on ${formatDay(epic.start)} with ${n(a)} work items`;
+  const started = `${epic.key} started on ${formatDay(epic.start)} with ${counted(a, 'work item')}`;
   let fact = null;
   if (t === 0) notes.push(`${epic.key} has no child work items yet.`);
   else if (t < a) fact = `${started} and now has ${n(t)}, ${n(a - t)} fewer.`;
@@ -37,20 +37,20 @@ export function scopeSignal(snapshot, comparison) {
 
   // AC 17: growth of comparable epics; an epic with 0 children at its start has no percentage.
   const measured = comparison.epics.filter((e) => e.details);
-  const counted = measured.filter((e) => e.details.childCountAtStart > 0);
-  const leftOut = measured.length - counted.length;
-  if (counted.length >= MIN_EPICS) {
-    const growth = counted.map((e) => percent(e.details.childCount - e.details.childCountAtStart, e.details.childCountAtStart));
-    const range = `${counted.length} epics, from ${Math.min(...growth)}% to ${Math.max(...growth)}%`;
-    const extra = leftOut ? `; ${leftOut} left out because they had no work items at their start` : '';
+  const withStart = measured.filter((e) => e.details.childCountAtStart > 0);
+  const leftOut = measured.length - withStart.length;
+  if (withStart.length >= MIN_EPICS) {
+    const growth = withStart.map((e) => percent(e.details.childCount - e.details.childCountAtStart, e.details.childCountAtStart));
+    const range = `${withStart.length} epics, from ${Math.min(...growth)}% to ${Math.max(...growth)}%`;
+    const extra = leftOut ? `; ${leftOut} left out because ${leftOut === 1 ? 'it had no work items at its' : 'they had no work items at their'} start` : '';
     drafts.push(draft(
       'scope-base-rate',
       `Comparable epics gained a median of ${roundedMedian(growth)}% more work items after they started (${range}${extra}).`,
-      counted.slice(0, MAX_LINKS).map((e) => ({ key: e.key, summary: e.summary })),
+      withStart.slice(0, MAX_LINKS).map((e) => ({ key: e.key, summary: e.summary })),
       true,
       {
         medianGrowthPercent: roundedMedian(growth),
-        epics: counted.length,
+        epics: withStart.length,
         minGrowthPercent: Math.min(...growth),
         maxGrowthPercent: Math.max(...growth),
         leftOut,

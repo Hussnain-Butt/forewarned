@@ -1,7 +1,7 @@
 // Signal 3, load per person (story 002 AC 18–22): who works on the epic, how much open work each
 // of them carries in total, and how much of the epic's open work nobody owns.
 
-import { formatCount, percent, roundedMedian } from './format.js';
+import { counted, formatCount, percent, roundedMedian } from './format.js';
 
 const MAX_PEOPLE_FACTS = 10;
 const MAX_PEOPLE_COUNTED = 25;
@@ -43,12 +43,12 @@ export function loadSignal(snapshot) {
 
   const median = people.length ? roundedMedian(people.map((p) => p.openTotal)) : 0;
   const n = formatCount;
-  for (const { person, openTotal: counted, otherEpics } of people.slice(0, MAX_PEOPLE_FACTS)) {
+  for (const { person, openTotal: countedTotal, otherEpics } of people.slice(0, MAX_PEOPLE_FACTS)) {
     const x = inEpic.get(person.accountId) ?? 0;
     // Search counts can lag behind the read, so the total is never below the work in this epic.
-    const openTotal = Math.max(counted, x);
+    const openTotal = Math.max(countedTotal, x);
     const others = otherEpics ?? [];
-    let fact = `${person.displayName} has ${n(openTotal)} open work items in total, ${n(x)} of them in this epic (${percent(x, openTotal)}%; ${n(openTotal - x)} elsewhere); the median for the ${people.length} people on this epic is ${n(median)}.`;
+    let fact = `${person.displayName} has ${counted(openTotal, 'open work item')} in total, ${n(x)} of them in this epic (${percent(x, openTotal)}%; ${n(openTotal - x)} elsewhere); the median for the ${counted(people.length, 'person', 'people')} on this epic is ${n(median)}.`;
     if (others.length) fact += ` ${person.displayName} also has open work items in ${others.length} other ${others.length === 1 ? 'epic' : 'epics'} in progress: ${others.map((e) => e.key).join(', ')}.`;
     drafts.push(draft('load-person', fact, [{ key: epic.key, summary: epic.summary }, ...others].slice(0, MAX_LINKS), {
       openTotal,
@@ -64,7 +64,7 @@ export function loadSignal(snapshot) {
   const t = epic.openChildren.total;
   const u = epic.openChildren.unassignedTotal;
   if (u > 0) {
-    drafts.push(draft('load-unassigned', `${n(u)} of ${n(t)} open work items in this epic are unassigned (${percent(u, t)}%; ${n(t - u)} assigned).`,
+    drafts.push(draft('load-unassigned', `${n(u)} of ${counted(t, 'open work item')} in this epic ${u === 1 ? 'is' : 'are'} unassigned (${percent(u, t)}%; ${n(t - u)} assigned).`,
       [{ key: epic.key, summary: epic.summary }],
       { unassignedOpen: u, open: t, assignedOpen: t - u, unassignedPercent: percent(u, t) }));
   }

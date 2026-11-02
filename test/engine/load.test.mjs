@@ -80,3 +80,17 @@ test('the truncation note names how many work items were read, and lagging count
   assert.match(check.note, /^Based on the first 17 open work items\.$/);
   assert.ok(drafts.every((d) => d.type !== 'load-person' || d.numbers.openElsewhere >= 0));
 });
+
+test('one person, one open work item and one unassigned work item read naturally', () => {
+  const snapshot = seedSnapshot();
+  const person = snapshot.epic.people[0].person;
+  const epic = {
+    ...snapshot.epic,
+    assignee: null,
+    people: [{ person, openTotal: 1, otherEpics: [] }],
+    openChildren: { total: 2, unassignedTotal: 1, read: [{ key: 'CHK-901', summary: 'A', assignee: person }, { key: 'CHK-902', summary: 'B', assignee: null }] },
+  };
+  const [one, unassigned] = loadSignal({ ...snapshot, epic }).drafts;
+  assert.equal(one.fact, `${person.displayName} has 1 open work item in total, 1 of them in this epic (100%; 0 elsewhere); the median for the 1 person on this epic is 1.`);
+  assert.equal(unassigned.fact, '1 of 2 open work items in this epic is unassigned (50%; 1 assigned).');
+});

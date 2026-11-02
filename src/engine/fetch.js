@@ -79,7 +79,9 @@ async function readVisible(port, keys, fields) {
 }
 
 // Status changes per issue ID, oldest first, as { day, category }. A history item names its new
-// status by ID; imported history may carry only the name, so the name is the fallback.
+// status by ID; imported history may carry only the name, so the name is the fallback. No
+// `fieldIds` filter is sent: imported history items have `field: 'status'` but no `fieldId`
+// (seen on the demo site, M2 site run), and Jira's filter would drop them all.
 async function statusMoves(port, issueIds, statuses) {
   const byId = new Map(statuses.map((s) => [String(s.id), s.statusCategory?.key]));
   const byName = new Map(statuses.map((s) => [String(s.name ?? '').toLowerCase(), s.statusCategory?.key]));
@@ -87,7 +89,7 @@ async function statusMoves(port, issueIds, statuses) {
   const moves = new Map();
   let nextPageToken;
   for (let pageNo = 0; pageNo < MAX_CHANGELOG_PAGES; pageNo += 1) {
-    const page = await port.changelogs({ issueIdsOrKeys: issueIds, fieldIds: ['status'], maxResults: 1000, ...(nextPageToken ? { nextPageToken } : {}) });
+    const page = await port.changelogs({ issueIdsOrKeys: issueIds, maxResults: 1000, ...(nextPageToken ? { nextPageToken } : {}) });
     for (const log of page.issueChangeLogs ?? []) {
       const list = moves.get(log.issueId) ?? [];
       for (const history of log.changeHistories ?? []) {

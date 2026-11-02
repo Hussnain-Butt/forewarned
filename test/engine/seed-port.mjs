@@ -151,12 +151,13 @@ export function seedPort({
         if (r.status === 'Done' && r.finish !== null) moves.push({ day: r.finish, status: 'Done' });
         moves.push(...(r.extraMoves ?? []));
         moves.sort((a, b) => a.day - b.day);
+        // Like the demo site (M2 site run, 2 Nov): imported history items have `field` but no
+        // `fieldId`, and Jira's `fieldIds` filter drops every item whose fieldId isn't listed.
+        const items = (mv) => [{ field: 'status', fieldtype: 'jira', ...(statusIds ? { to: STATUS[mv.status].id } : {}), toString: mv.status }]
+          .filter((item) => !body.fieldIds?.length || body.fieldIds.includes(item.fieldId));
         return {
           issueId: ids.get(r.id),
-          changeHistories: moves.map((mv) => ({
-            created: stamp(mv.day),
-            items: [{ field: 'status', fieldId: 'status', ...(statusIds ? { to: STATUS[mv.status].id } : {}), toString: mv.status }],
-          })),
+          changeHistories: moves.map((mv) => ({ created: stamp(mv.day), items: items(mv) })).filter((h) => h.items.length),
         };
       }),
     }),

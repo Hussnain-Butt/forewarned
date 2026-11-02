@@ -1,7 +1,7 @@
 // Signal 1, slip history (story 002 AC 10–15): how late comparable epics finished, how long they
 // took, and whether the current plan is shorter than that history.
 
-import { compareKeys, formatDay, percent, roundedMedian, shorten } from './format.js';
+import { compareKeys, counted, formatDay, percent, roundedMedian, shorten } from './format.js';
 
 const MIN_EPICS = 3;
 const MAX_EXAMPLES = 3;
@@ -28,10 +28,10 @@ export function slipSignal(snapshot, comparison) {
     if (withDue.length) {
       const m = withDue.length;
       const days = late.map((e) => e.daysLate);
-      const share = `${late.length} of ${m} comparable epics with a due date finished late (${percent(late.length, m)}%; ${m - late.length} on time)`;
+      const share = `${late.length} of ${counted(m, 'comparable epic')} with a due date finished late (${percent(late.length, m)}%; ${m - late.length} on time)`;
       let fact = `${share}.`;
-      if (late.length === 1) fact = `${share}, by ${days[0]} days.`;
-      if (late.length > 1) fact = `${share}, by a median of ${roundedMedian(days)} days (from ${Math.min(...days)} to ${Math.max(...days)} days).`;
+      if (late.length === 1) fact = `${share}, by ${counted(days[0], 'day')}.`;
+      if (late.length > 1) fact = `${share}, by a median of ${counted(roundedMedian(days), 'day')} (from ${Math.min(...days)} to ${Math.max(...days)} days).`;
       // Links the late epics, or the epics it counted when none was late (AC 26).
       drafts.push(draft('slip-base-rate', fact, (late.length ? late : withDue).slice(0, MAX_LINKS).map(link), true, {
         late: late.length,
@@ -53,7 +53,7 @@ export function slipSignal(snapshot, comparison) {
       const k = epics.filter((e) => e.duration > p).length;
       drafts.push(draft(
         'plan-vs-history',
-        `${epic.key} is planned for ${p} days (started ${formatDay(epic.start)}, due ${formatDay(epic.due)}); ${k} of ${n} comparable epics took longer than ${p} days (${percent(k, n)}%; ${n - k} took ${p} days or less).`,
+        `${epic.key} is planned for ${counted(p, 'day')} (started ${formatDay(epic.start)}, due ${formatDay(epic.due)}); ${k} of ${n} comparable epics took longer than ${counted(p, 'day')} (${percent(k, n)}%; ${n - k} took ${counted(p, 'day')} or less).`,
         [link(epic)],
         true,
         { plannedDays: p, longerThanPlan: k, epics: n },
@@ -66,7 +66,7 @@ export function slipSignal(snapshot, comparison) {
     const median = roundedMedian(epics.map((e) => e.duration));
     drafts.push(draft(
       'duration-base-rate',
-      `Comparable epics took a median of ${median} days from start to done (${n} epics: ${n - withoutDue} with a due date and ${withoutDue} without).`,
+      `Comparable epics took a median of ${counted(median, 'day')} from start to done (${n} epics: ${n - withoutDue} with a due date and ${withoutDue} without).`,
       epics.slice(0, MAX_LINKS).map(link),
       true,
       { medianDurationDays: median, epics: n, withDueDate: n - withoutDue, withoutDueDate: withoutDue },
@@ -79,7 +79,7 @@ export function slipSignal(snapshot, comparison) {
   for (const e of late.slice(0, MAX_EXAMPLES)) {
     drafts.push(draft(
       'slip-example',
-      `${e.key} ${shorten(e.summary)} was due ${formatDay(e.due)} and finished ${formatDay(e.finish)}, ${e.daysLate} days late.`,
+      `${e.key} ${shorten(e.summary)} was due ${formatDay(e.due)} and finished ${formatDay(e.finish)}, ${counted(e.daysLate, 'day')} late.`,
       [link(e)],
       false,
       { daysLate: e.daysLate },
