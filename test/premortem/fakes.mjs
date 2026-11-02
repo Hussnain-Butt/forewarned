@@ -4,12 +4,18 @@
 import { createJira } from '../../src/engine/jira.js';
 import { seedPort } from '../engine/seed-port.mjs';
 
+// `writes` keeps every value set, in order, so tests can check the steps of a run.
 export function fakeKvs() {
   const data = new Map();
+  const writes = [];
   return {
     data,
+    writes,
     get: async (key) => data.get(key)?.value,
-    set: async (key, value, options) => { data.set(key, { value: structuredClone(value), options }); },
+    set: async (key, value, options) => {
+      data.set(key, { value: structuredClone(value), options });
+      writes.push({ key, value: structuredClone(value) });
+    },
   };
 }
 

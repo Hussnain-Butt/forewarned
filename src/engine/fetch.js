@@ -153,8 +153,9 @@ async function childCounts(port, epic, now) {
 }
 
 // Reads the Snapshot for one epic, or returns { error } with a message for the user. `now` is the
-// run's start time in milliseconds; `today` is its UTC day number.
-export async function fetchSnapshot(port, requestedKey, { today, now, accountId }) {
+// run's start time in milliseconds; `today` is its UTC day number. `onStep` is told the name of each
+// phase as it starts, for the run status the panel shows (story 003 AC 7).
+export async function fetchSnapshot(port, requestedKey, { today, now, accountId, onStep = async () => {} }) {
   if (!ISSUE_KEY.test(requestedKey)) return { error: 'No valid epic key was given.' };
 
   // Phase 1: site, statuses, link types and the epic itself (AC 1).
@@ -174,6 +175,7 @@ export async function fetchSnapshot(port, requestedKey, { today, now, accountId 
   if (!SPACE_KEY.test(space ?? '')) return { error: `${epicKey} is in a space Forewarned can't read.` };
   const linkTypeFound = (linkTypes.issueLinkTypes ?? []).some((t) => t.inward === BLOCKED_BY);
 
+  await onStep('comparable epics');
   // Phase 2: finished epics of the same space and the status history they need.
   const epicTypeIds = (await port.projectIssueTypes(issue.fields.project.id))
     .filter((t) => t.hierarchyLevel === 1).map((t) => String(t.id)).filter((id) => TYPE_ID.test(id));
@@ -188,6 +190,7 @@ export async function fetchSnapshot(port, requestedKey, { today, now, accountId 
   const epic = toEpic(issue, moves, today);
   const candidates = candidateIssues.map((i) => toEpic(i, moves, today));
 
+  await onStep('past epics');
   // Phase 3: details of the comparable epics only. comparison.epics holds the same objects as
   // candidates, so the details attached here become part of the Snapshot's candidates.
   const comparison = selectComparable(epic, candidates, today);
@@ -202,6 +205,7 @@ export async function fetchSnapshot(port, requestedKey, { today, now, accountId 
     for (const e of comparison.epics) e.details.blocked = blockedList(blockedChildren.filter((c) => c.fields.parent?.key === e.key));
   }
 
+  await onStep('scope');
   // Phase 4: the current epic's children, open work and blockers (AC 16, 18, 20, 23).
   const open = `parent = ${quote(epicKey)} AND statusCategory != Done`;
   const [counts, openTotal, unassignedTotal, openIssues, blockedIssues] = await Promise.all([
@@ -216,6 +220,7 @@ export async function fetchSnapshot(port, requestedKey, { today, now, accountId 
   const read = openIssues.map((i) => ({ key: i.key, summary: i.fields.summary ?? '', assignee: person(i.fields.assignee) }));
   const blocked = blockedList(blockedIssues);
 
+  await onStep('load');
   // Phase 5: everyone's total open work, and the other epics of the busiest 10 (AC 19). A person
   // Jira can't count (for example an erased account) is skipped, not the whole run.
   const ranked = rankPeople({ assignee: epic.assignee, openChildren: { read } })
@@ -247,6 +252,7 @@ export async function fetchSnapshot(port, requestedKey, { today, now, accountId 
   const people = counted.filter(Boolean)
     .map((p) => (p.otherEpics ? { ...p, otherEpics: p.otherEpics.filter((e) => visibleEpics.has(e.key)) } : p));
 
+  await onStep('dependencies');
   // Phase 6: details of every blocker, read again as the user. A blocker that doesn't come back is
   // one the user can't see: it is left out, and the pack says so.
   const blockerKeys = [...new Set([...blocked, ...comparison.epics.flatMap((e) => e.details.blocked)].flatMap((b) => b.blockerKeys))].sort(compareKeys);

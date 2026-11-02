@@ -11,12 +11,12 @@ import { computePack } from './pack.js';
 const BUDGET_MS = 45000;
 
 // Returns { pack } or { error } (a message for the user). Jira failures throw a JiraError.
-export async function buildEvidencePack({ senders, epicKey, accountId, now = Date.now }) {
+export async function buildEvidencePack({ senders, epicKey, accountId, now = Date.now, onStep }) {
   const started = now();
   const port = createJira(senders, { deadline: started + BUDGET_MS, now });
   let pack = null;
   try {
-    const result = await fetchSnapshot(port, epicKey, { today: dayOf(started), now: started, accountId });
+    const result = await fetchSnapshot(port, epicKey, { today: dayOf(started), now: started, accountId, onStep });
     if (result.error) return { error: result.error };
     pack = { ...computePack(result.snapshot), builtAt: new Date(started).toISOString() };
     return { pack };
