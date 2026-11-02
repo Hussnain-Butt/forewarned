@@ -102,6 +102,14 @@ test('a link copied from the epic summary or a cited fact is allowed', () => {
   assert.equal(validateReasons([reason({ evidenceIds: ['E1', 'E7'], mitigation: 'See https://pay.example/other first.' })], pack).dropped[0]?.code, 'link');
 });
 
+test('a link must match a known link whole: a cut-down address is dropped, an address from a markdown link passes', () => {
+  const pack = { ...PACK, epic: { ...PACK.epic, summary: 'Docs at https://github.com/acme/docs and [the plan](https://wiki.example/plan)' } };
+  const drop = (mitigation) => validateReasons([reason({ mitigation })], pack).dropped[0]?.code;
+  assert.equal(drop('Read https://github.co first.'), 'link');
+  assert.equal(drop('Read https://github.com/acme/docs first.'), undefined);
+  assert.equal(drop('Read https://wiki.example/plan first.'), undefined);
+});
+
 test('likelihood cap: High without a cited base rate becomes Medium and is kept (AC 14)', () => {
   const kept = keptOne(reason({ explanation: 'CHK-7 finished 42 days late.', evidenceIds: ['E2'], mitigation: 'Add buffer.' }));
   assert.equal(kept.likelihood, 'Medium');

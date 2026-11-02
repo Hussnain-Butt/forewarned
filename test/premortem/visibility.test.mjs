@@ -30,6 +30,8 @@ test('the builder is checked too: after losing access to a blocker they no longe
   const { pack, readerDeps } = await stored([BLOCKER]);
   const { report } = await getPremortemAction({ deps: readerDeps, epicKey: EPIC });
   assert.ok(pack.builtFor === 'acc-1' && !JSON.stringify(report).includes(BLOCKER));
+  // Even when asked with the builder's own account ID, no shortcut skips the check.
+  assert.ok((await hiddenEvidenceIds(readerDeps.port, pack, 'acc-1')).has(pack.evidence.find((e) => e.type === 'open-blocker').id));
 });
 
 test('another reader who can see everything gets the same pack and report', async () => {

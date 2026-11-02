@@ -150,6 +150,16 @@ test('summaries holding a web address still give reasons that pass (the link rul
   assert.deepEqual(validateReasons(reasons, pack, { keep: ['ruleId', 'baseRateFact'] }).dropped, []);
 });
 
+// The cut's "…" right after the link made "www.shop.example…", which the summary doesn't hold.
+test('a long summary cut just after a web address still gives reasons that pass', () => {
+  const pack = seedPack();
+  const summary = 'Relaunch the checkout for every market on the new store front www.shop.example checkout';
+  const longPack = { ...pack, epic: { ...pack.epic, summary } };
+  const reasons = ruleBasedReasons(longPack);
+  assert.ok(reasons.some((r) => r.title.includes('www.shop.example…')), 'the cut lands just after the address');
+  assert.deepEqual(validateReasons(reasons, longPack, { keep: ['ruleId', 'baseRateFact'] }).dropped, []);
+});
+
 // A cut inside "73519" or "PAY-4821" left a partial number or key the validator doesn't know.
 test('a long summary is cut between words, so no number or key is split and every reason passes', () => {
   const pack = seedPack();

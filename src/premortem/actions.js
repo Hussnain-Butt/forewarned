@@ -48,7 +48,7 @@ export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
   if (isRunInProgress(status, deps.now())) return { error: IN_PROGRESS };
   const stored = await readPremortem(deps.kvs, epic.id);
   if (!stored) {
-    return { error: status?.status === 'failed' ? `The last run failed: ${status.error} Call run-premortem to try again.` : noEvidence(epic.key) };
+    return { error: status?.status === 'failed' ? `The last run failed: ${status.error} Ask the user whether to run it again.` : noEvidence(epic.key) };
   }
   return { epicKey: epic.key, ...packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack)) };
 }

@@ -62,7 +62,7 @@ test('get-evidence passes on why the last run failed when there is no evidence',
   const { deps, kvs } = await setup({ withRun: false });
   await kvs.set(`run:${EPIC_ID}`, { runId: 'r1', status: 'failed', startedAt: new Date(NOW).toISOString(), error: `Forewarned couldn't save the report on ${EPIC}.` });
   assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC }),
-    { error: `The last run failed: Forewarned couldn't save the report on ${EPIC}. Call run-premortem to try again.` });
+    { error: `The last run failed: Forewarned couldn't save the report on ${EPIC}. Ask the user whether to run it again.` });
 });
 
 // Someone who can't see the epic learns nothing, not even whether a run is in progress.

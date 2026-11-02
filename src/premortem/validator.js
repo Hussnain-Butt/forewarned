@@ -19,8 +19,11 @@ const NUMBER_WORDS = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eig
 const NUMBER_WORD = new RegExp(`\\b(${Object.keys(NUMBER_WORDS).join('|')})\\b`, 'gi');
 // Web addresses and markdown links. Saved write-ups reach other users and their agents, so like
 // keys, a reason may hold one only when the epic summary or its cited evidence already does.
+// A link must match a known one whole. Trailing punctuation and the "…" of a cut are not part of
+// it, and the address inside a known markdown link is known too.
 const LINK = /https?:\/\/[^\s)\]]+|www\.[^\s)\]]+|\]\([^)]*\)/gi;
-const linksIn = (text) => [...String(text ?? '').matchAll(LINK)].map(([link]) => link.replace(/[.,;:!?]+$/, ''));
+const linksIn = (text) => [...String(text ?? '').matchAll(LINK)].map(([link]) => link.replace(/[.,;:!?…]+$/, ''));
+const knownLinksIn = (text) => new Set(linksIn(text).flatMap((link) => (link.startsWith('](') ? [link, link.slice(2, -1)] : [link])));
 
 // The quantities in a text, normalized ("5,121" → "5121", "86 %" → "86"). Work item keys and
 // evidence IDs are removed first, so "CHK-12" and "E3" are not numbers.
@@ -88,8 +91,8 @@ function check(input, byId, epic, keep) {
   if ([...numbersIn(written)].some((n) => !knownNumbers.has(n))) return { code: 'unknown-number', title };
   const knownKeys = new Set([epic?.key, ...keysIn(epic?.summary), ...cited.flatMap((item) => [...keysIn(item.fact), ...(item.links ?? []).map((l) => l.key)])]);
   if ([...keysIn(written)].some((k) => !knownKeys.has(k))) return { code: 'unknown-key', title };
-  const knownText = sources.join(' ');
-  if (linksIn(written).some((link) => !knownText.includes(link))) return { code: 'link', title };
+  const knownLinks = knownLinksIn(sources.join(' '));
+  if (linksIn(written).some((link) => !knownLinks.has(link))) return { code: 'link', title };
 
   // AC 14: High needs a cited base rate.
   const capped = likelihood === 'High' && !cited.some((item) => item.baseRate) ? 'Medium' : likelihood;
