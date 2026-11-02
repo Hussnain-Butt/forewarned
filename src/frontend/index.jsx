@@ -1,167 +1,127 @@
 import React, { useEffect, useRef, useState } from 'react';
-import ForgeReconciler, { Button, Heading, Inline, Lozenge, SectionMessage, Spinner, Stack, Text } from '@forge/react';
-import { invoke, rovo } from '@forge/bridge';
+import ForgeReconciler, { Button, Inline, SectionMessage, SectionMessageAction, Spinner, Stack, Text } from '@forge/react';
+import { invoke } from '@forge/bridge';
+import { Report } from './report.jsx';
+import { RunSteps } from './running.jsx';
 
-// Temporary panel controls for stories 003 and 004 (M3 Task 8): Run, step-by-step status and the
-// version 2 report. Story 005 (M4) replaces this panel with the finished design and states.
+// The Forewarned epic panel (story 005): run the pre-mortem, follow its steps, read the report.
 
-const AGENT = { type: 'forge', agentName: 'Forewarned', agentKey: 'forewarned-agent' };
-const POLL_MS = 2000;
-const POLL_LIMIT_MS = 5 * 60 * 1000;
-const LOZENGE = { High: 'removed', Medium: 'moved', Low: 'default' };
-const SIGNALS = { slip: 'Slip history', scope: 'Scope growth', load: 'Load', dependencies: 'Dependencies' };
-// The run's steps (src/premortem/consumer.js) as panel text; the rest read "Checking ‹step›…".
-const STEP_TEXT = { queued: 'Waiting to start…', writing: 'Writing the report…' };
-const stepText = (step) => STEP_TEXT[step] ?? `Checking ${step}…`;
+const RUN_POLL_MS = 2000;
+const SLOW_AFTER_MS = 60 * 1000;
+const RUN_LIMIT_MS = 5 * 60 * 1000;
+const LOAD_ERROR = "Forewarned couldn't load the pre-mortem. Try again in a minute.";
+const START_ERROR = "Forewarned couldn't start the run. Try again in a minute.";
+const NOT_AN_EPIC = 'This panel works on epics only.';
 const wait = (ms) => new Promise((done) => { setTimeout(done, ms); });
 
-const Reason = ({ reason }) => (
-  <Stack space="space.050">
-    <Inline space="space.100" alignBlock="center">
-      <Lozenge appearance={LOZENGE[reason.likelihood] ?? 'default'}>{reason.likelihood}</Lozenge>
-      <Text weight="bold">{reason.title}</Text>
-    </Inline>
-    {reason.explanation ? <Text>{reason.explanation}</Text> : null}
-    <Text>What to do: {reason.mitigation}</Text>
-    <Text size="small" color="color.text.subtle">Evidence: {reason.evidenceIds.join(', ')}</Text>
-  </Stack>
-);
-
-const Checks = ({ checks }) => (
-  <Stack space="space.050">
-    {Object.entries(SIGNALS).map(([signal, label]) => (
-      <Text key={signal} size="small">
-        {label}: {checks[signal]?.status ?? 'not checked'}{checks[signal]?.note ? ` (${checks[signal].note})` : ''}
-      </Text>
-    ))}
-  </Stack>
-);
-
-const Report = ({ report }) => {
-  const { ruleBased, agent, status, checks } = report;
-  return (
-    <Stack space="space.200">
-      {report.hiddenForReader ? (
-        <SectionMessage appearance="information">Some reasons are hidden because they name work items you can&apos;t see.</SectionMessage>
-      ) : null}
-      {agent ? (
-        <Stack space="space.150">
-          <Heading size="small">Pre-mortem from the Forewarned agent</Heading>
-          {agent.stale ? (
-            <SectionMessage appearance="warning">The agent wrote this pre-mortem on older evidence, so it isn&apos;t shown. Ask the agent to write it again.</SectionMessage>
-          ) : null}
-          {agent.reasons.map((reason) => <Reason key={reason.title} reason={reason} />)}
-        </Stack>
-      ) : null}
-      <Stack space="space.150">
-        <Heading size="small">From your Jira history (rule-based, no AI)</Heading>
-        {status === 'insufficient-history' ? (
-          <SectionMessage appearance="information">
-            There is little finished history in this space, so some checks couldn&apos;t run. Here is what Forewarned checked.
-          </SectionMessage>
-        ) : null}
-        {status === 'no-signals' ? (
-          <SectionMessage appearance="information">No strong risk signals found in this history. Here is what Forewarned checked.</SectionMessage>
-        ) : null}
-        {ruleBased.reasons.map((reason) => <Reason key={reason.ruleId + reason.title} reason={reason} />)}
-        {status !== 'ok' ? <Checks checks={checks} /> : null}
-      </Stack>
-    </Stack>
-  );
-};
-
 const App = () => {
-  const [state, setState] = useState({ loading: true });
-  const [rovoEnabled, setRovoEnabled] = useState(false);
-  const [run, setRun] = useState(null); // { step, error, seconds }
-  const polling = useRef(false);
+  const [panel, setPanel] = useState(null);
+  // { status, slow } while a run goes, { failed } or { timedOut } when it ended badly, else null.
+  const [run, setRun] = useState(null);
+  const following = useRef(false);
+  const lastCount = useRef(null);
 
-  const load = () => invoke('getPremortem')
-    .then((result) => setState({ loading: false, ...result }))
-    .catch(() => setState({ loading: false, error: "The pre-mortem couldn't be loaded." }));
+  const load = () => invoke('getPanel')
+    .then((result) => setPanel(result))
+    .catch(() => setPanel({ error: LOAD_ERROR }));
 
-  // Polls the epic's run status every 2 s (at most 5 minutes) and reloads the report when it is
-  // done. It follows whichever run the status shows, so a double click can't strand it.
-  const follow = async (clickedAt) => {
-    if (polling.current) return;
-    polling.current = true;
+  // AC 6–7: polls the epic's run status every 2 s, at most 5 minutes, and follows whichever run the
+  // status shows, so a run started in another tab or by the agent is followed too.
+  const follow = async (startedAt) => {
+    if (following.current) return;
+    following.current = true;
     try {
-      while (Date.now() - clickedAt < POLL_LIMIT_MS) {
-        await wait(POLL_MS);
+      while (Date.now() - startedAt < RUN_LIMIT_MS) {
         let status;
         try {
           ({ status } = await invoke('getRunStatus'));
         } catch {
-          setRun({ error: "The run status couldn't be read. Click Refresh to see the latest report." });
+          setRun({ failed: "Forewarned couldn't read the run's progress. Refresh the page to see the latest report." });
           return;
         }
-        if (!status) continue;
-        if (status.status === 'done') {
+        if (status?.status === 'done') {
           await load();
-          setRun({ seconds: Math.round((Date.now() - clickedAt) / 1000) });
+          setRun(null);
           return;
         }
-        if (status.status === 'failed') {
-          setRun({ error: status.error });
+        if (status?.status === 'failed') {
+          setRun({ failed: status.error });
           return;
         }
-        setRun({ step: status.step ?? 'queued' });
+        if (Number.isInteger(status?.count)) lastCount.current = status.count;
+        setRun({ status: { ...status, count: status?.count ?? lastCount.current }, slow: Date.now() - startedAt > SLOW_AFTER_MS });
+        await wait(RUN_POLL_MS);
       }
-      setRun({ error: 'The run is taking longer than 5 minutes. Refresh later to see the result.' });
+      setRun({ timedOut: true });
     } finally {
-      polling.current = false;
+      following.current = false;
     }
   };
 
+  // AC 5: the running state shows at once; the start function checks the epic and the permission.
   const startRun = async () => {
-    const clickedAt = Date.now();
-    setRun({ step: 'queued' });
-    const started = await invoke('startRun').catch(() => ({ error: "Forewarned couldn't start the run. Try again in a minute." }));
+    const startedAt = Date.now();
+    lastCount.current = null;
+    setRun({ status: { status: 'queued' }, slow: false });
+    const started = await invoke('startRun').catch(() => ({ error: START_ERROR }));
     if (started.error) {
-      setRun({ error: started.error });
+      setRun({ failed: started.error });
       return;
     }
-    await follow(clickedAt);
+    await follow(startedAt);
   };
 
   useEffect(() => {
     load();
-    rovo.isEnabled().then(setRovoEnabled).catch(() => setRovoEnabled(false));
-    // Pick up a run that is already going, for example one the agent started.
     invoke('getRunStatus').then(({ status }) => {
-      if (status && ['queued', 'running'].includes(status.status)) {
-        setRun({ step: status.step ?? 'queued' });
-        follow(Date.now());
+      if (['queued', 'running'].includes(status?.status)) {
+        setRun({ status, slow: false });
+        follow(Date.parse(status.startedAt) || Date.now());
       }
     }).catch(() => {});
   }, []);
 
-  const openAgent = () => rovo.open({ ...AGENT, prompt: `Run a pre-mortem on epic ${state.issueKey}.` });
-
-  if (state.loading) {
-    return <Spinner label="Loading the pre-mortem" />;
+  if (!panel) return <Spinner label="Loading the pre-mortem" />;
+  if (panel.error) {
+    return (
+      <SectionMessage
+        appearance={panel.error === NOT_AN_EPIC ? 'information' : 'error'}
+        actions={panel.error === NOT_AN_EPIC ? undefined : <SectionMessageAction onClick={load}>Try again</SectionMessageAction>}
+      >
+        <Text>{panel.error}</Text>
+      </SectionMessage>
+    );
   }
-  const running = Boolean(run?.step);
-  const report = state.report?.version === 2 ? state.report : null;
+
+  const running = Boolean(run?.status);
+  const { report, canRun } = panel;
   return (
     <Stack space="space.200">
-      {state.error ? <SectionMessage appearance="error">{state.error}</SectionMessage> : null}
-      {run?.error ? <SectionMessage appearance="error">{run.error}</SectionMessage> : null}
-      {running ? (
-        <Inline space="space.100" alignBlock="center">
-          <Spinner size="small" label="Running" />
-          <Text>{stepText(run.step)}</Text>
-        </Inline>
+      {run?.failed ? (
+        <SectionMessage appearance="error" actions={canRun ? <SectionMessageAction onClick={startRun}>Try again</SectionMessageAction> : undefined}>
+          <Text>{run.failed}</Text>
+        </SectionMessage>
       ) : null}
-      {report ? <Report report={report} /> : !running && <Text>No pre-mortem yet. Click Run pre-mortem.</Text>}
-      {run?.seconds !== undefined ? <Text size="small" color="color.text.subtle">Ready in {run.seconds} s.</Text> : null}
-      {rovoEnabled ? null : (
-        <SectionMessage appearance="information">Rovo is off on this site, so the Forewarned agent isn&apos;t available.</SectionMessage>
+      {run?.timedOut ? (
+        <SectionMessage appearance="warning">
+          <Text>The run is taking longer than 5 minutes. Refresh later to see the result.</Text>
+        </SectionMessage>
+      ) : null}
+      {running ? <RunSteps status={run.status} slow={run.slow} /> : null}
+      {!report && !running ? (
+        <Stack space="space.100">
+          <Text>Imagine this epic has already failed. Forewarned finds the most likely reasons in your team&apos;s Jira history and links the proof.</Text>
+          <Text color="color.text.subtle">It reads finished epics in this space and this epic&apos;s work items, links and assignees. Nothing leaves Atlassian.</Text>
+        </Stack>
+      ) : null}
+      {report ? <Report panel={panel} now={Date.now()} /> : null}
+      {canRun ? null : (
+        <Text color="color.text.subtle">You need permission to edit this epic to run a pre-mortem. Ask a space admin.</Text>
       )}
-      <Inline space="space.100">
-        <Button appearance="primary" onClick={startRun} isDisabled={running}>Run pre-mortem</Button>
-        {rovoEnabled && state.issueKey ? <Button appearance="rovo" onClick={openAgent}>Write with Forewarned agent</Button> : null}
-        <Button onClick={load}>Refresh</Button>
+      <Inline space="space.100" shouldWrap>
+        <Button appearance={report ? 'default' : 'primary'} onClick={startRun} isDisabled={running || !canRun}>
+          {report ? 'Re-run' : 'Run pre-mortem'}
+        </Button>
       </Inline>
     </Stack>
   );
