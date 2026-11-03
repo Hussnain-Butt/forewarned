@@ -19,16 +19,17 @@ const SET_FIELDS = new Set(['summary', 'issuetype', 'project', 'parent', 'descri
 const STALE = "This reason isn't in the latest report any more.";
 const OUT_OF_TIME = 'Forewarned ran out of time before this one. Try again.';
 const JIRA_BUSY = 'Jira is busy right now. Try again in a minute.';
+const UNCONFIRMED = "Jira didn't confirm this work item. Check the epic's child work items before you try again.";
 const noPermission = (space) => `You don't have permission to create work items in ${space}.`;
 const noType = (space) => `${space} has no work item type that can go under an epic. Create this one in Jira instead.`;
 const requiredField = (space, name) => `${space} requires the field '${name}' to create a work item. Create this one in Jira instead.`;
 const couldNotCreate = (space) => `Jira couldn't create this work item in ${space}. Create this one in Jira instead.`;
 
-// The report with each reason's fingerprint (AC 10), from the run's evidence and the epic's key at
-// run time, which is the key the evidence links name.
+// The report with each reason's fingerprint (AC 10), from the run's full evidence (the reader's
+// copy has no evidence types).
 export function withFingerprints(report, pack) {
   const evidenceById = new Map(pack.evidence.map((item) => [item.id, item]));
-  const mark = (reasons) => reasons.map((reason) => ({ ...reason, fingerprint: fingerprintOf(reason, evidenceById, pack.epic.key) }));
+  const mark = (reasons) => reasons.map((reason) => ({ ...reason, fingerprint: fingerprintOf(reason, evidenceById) }));
   return {
     ...report,
     ruleBased: { ...report.ruleBased, reasons: mark(report.ruleBased.reasons) },
@@ -49,11 +50,14 @@ export async function readerReasons({ port, pack, report }) {
 const validFingerprints = (fingerprints) => Array.isArray(fingerprints) && fingerprints.length >= 1 && fingerprints.length <= MAX_CHOSEN
   && fingerprints.every((fp) => typeof fp === 'string' && fp.length <= MAX_FINGERPRINT_CHARS);
 
-// A failed create in plain words (AC 12). The port has already retried a 429 or 5xx once.
+// A failed create in plain words (AC 12). The port has already retried a 429 once. Only a 4xx
+// means Jira refused it; after a 5xx or no answer the work item may exist, so the user checks
+// before trying again (AC 13: never twice).
 function createError(error, space) {
   if (error.status === 401 || error.status === 403) return noPermission(space);
-  if (error.status === 429 || error.status >= 500) return JIRA_BUSY;
-  return couldNotCreate(space);
+  if (error.status === 429) return JIRA_BUSY;
+  if (error.status >= 400 && error.status < 500) return couldNotCreate(space);
+  return UNCONFIRMED;
 }
 
 // Returns { results } with one TaskResult per fingerprint, in the order given (duplicates once), or

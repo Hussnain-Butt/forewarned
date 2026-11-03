@@ -20,16 +20,17 @@ const BUSY = 'Forewarned is already creating tasks for this epic. Wait a moment,
 const STALE = "This reason isn't in the latest report any more.";
 
 // acc-1 runs the pre-mortem; returns the KVS and the rule-based reasons with their fingerprints.
-async function setup() {
+// `seedOptions` changes the seed (for example `edit`).
+async function setup(seedOptions = {}) {
   const kvs = fakeKvs();
-  const builder = fakeSenders();
+  const builder = fakeSenders(seedOptions);
   const deps = { port: portOf(builder.senders), kvs, queue: fakeQueue(kvs), now: () => NOW, newId: () => 'r1', log: () => {} };
   await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' });
   await handleRun({ event: { body: { runId: 'r1', epicKey: EPIC, epicId: EPIC_ID, accountId: 'acc-1' } }, senders: builder.senders, kvs, now: () => NOW, log: () => {} });
   const { pack, report } = storedOf(kvs, EPIC_ID);
   const reasons = await readerReasons({ port: portOf(builder.senders), pack, report });
   assert.ok(reasons.length >= 3, 'the seed epic has at least 3 reasons');
-  return { kvs, reasons };
+  return { kvs, reasons, pack };
 }
 
 // Creates tasks as `accountId` with senders made from `options` (shared `created` lets calls see
@@ -91,18 +92,37 @@ test('a lock older than 60 s is taken over', async () => {
   assert.ok(!kvs.data.has(LOCK));
 });
 
+const UNCONFIRMED = "Jira didn't confirm this work item. Check the epic's child work items before you try again.";
+
 test('a task is saved before the next one is created', async () => {
   const { kvs, reasons } = await setup();
-  // The 2nd create request and its one retry fail with 500.
+  // The 2nd create request fails with 500. A 5xx can come after Jira made the work item, so it is
+  // not retried and the message says to check first.
   const created = [];
-  const jira = fakeSenders({ created, failCreate: (n) => (n === 2 || n === 3 ? 500 : 0) });
+  const jira = fakeSenders({ created, failCreate: (n) => (n === 2 ? 500 : 0) });
   const fingerprints = reasons.slice(0, 3).map((r) => r.fingerprint);
   const { results } = await create(kvs, fingerprints, { jira });
-  assert.deepEqual(results.map((r) => r.key ?? r.error), ['CHK-901', 'Jira is busy right now. Try again in a minute.', 'CHK-902']);
+  assert.deepEqual(results.map((r) => r.key ?? r.error), ['CHK-901', UNCONFIRMED, 'CHK-902']);
   assert.deepEqual(Object.keys((await readActions(kvs, EPIC_ID)).tasks).sort(), [fingerprints[0], fingerprints[2]].sort());
   const retry = await create(kvs, [fingerprints[1]], { jira });
   assert.equal(retry.results[0].key, 'CHK-903');
   assert.equal(created.length, 3, 'one more work item, not three');
+});
+
+test('a 429 on a create is retried once, then reported as busy', async () => {
+  const { kvs, reasons } = await setup();
+  const jira = fakeSenders({ failCreate: () => 429 });
+  const { results } = await create(kvs, [reasons[0].fingerprint], { jira });
+  assert.equal(results[0].error, 'Jira is busy right now. Try again in a minute.');
+  assert.equal(jira.created.length, 0);
+});
+
+test('a create that fails without an answer from Jira says to check first', async () => {
+  const { kvs, reasons } = await setup();
+  const jira = fakeSenders();
+  jira.senders.createIssue = async () => { throw new TypeError('fetch failed'); };
+  const { results } = await create(kvs, [reasons[0].fingerprint], { jira });
+  assert.equal(results[0].error, UNCONFIRMED);
 });
 
 test('a required field is named', async () => {
@@ -197,4 +217,15 @@ test('without a pre-mortem there is nothing to create', async () => {
 test("an epic the user can't see is refused", async () => {
   const { kvs } = await setup();
   assert.deepEqual(await create(kvs, ['rule:x|'], { jira: fakeSenders({ hidden: [EPIC] }) }), { error: `${EPIC} doesn't exist, or you don't have permission to see it.` });
+});
+
+// Review of M5: a later run in a space whose history grew still finds the same tasks (AC 11).
+test('a re-run with one more finished comparable epic keeps every fingerprint', async () => {
+  const before = await setup();
+  const after = await setup({ edit: (records) => {
+    const done = [...records.values()].find((r) => r.type === 'Epic' && r.status === 'Done' && r.space === 'CHK');
+    records.set('x-new-epic', { ...done, id: 'x-new-epic', summary: 'Saved addresses', created: -60, start: -50, due: -20, finish: -10, blockedBy: [], blocks: [] });
+  } });
+  assert.notDeepEqual(after.pack.comparison.epics.map((e) => e.key), before.pack.comparison.epics.map((e) => e.key), 'the comparison set changed');
+  assert.deepEqual(after.reasons.map((r) => r.fingerprint), before.reasons.map((r) => r.fingerprint));
 });

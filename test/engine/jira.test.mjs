@@ -47,3 +47,16 @@ test('a 200 that is not JSON fails without quoting the body', async () => {
   const port = createJira({ serverInfo: async () => new Response('<html>SENTINEL body</html>', { status: 200 }) }, { deadline: Infinity });
   await assert.rejects(port.serverInfo(), (e) => e instanceof JiraError && !e.message.includes('SENTINEL'));
 });
+
+// Story 006: a 5xx can arrive after Jira made the change, so a create is never sent twice. A 429
+// means Jira didn't take the request, so that one is still retried.
+test('a create or link that fails with 5xx is not retried', async () => {
+  for (const name of ['createIssue', 'createLink']) {
+    const port = createJira({ [name]: sequence(reply(503), reply(201, { key: 'CHK-9' })) }, { deadline: 60000, now: () => 0, sleep: async () => {} });
+    await assert.rejects(port[name]({}), (e) => e instanceof JiraError && e.status === 503);
+    assert.equal(port.requestCount, 1, name);
+  }
+  const port = createJira({ createIssue: sequence(reply(429, {}, { 'Retry-After': '1' }), reply(201, { key: 'CHK-9' })) }, { deadline: 60000, now: () => 0, sleep: async () => {} });
+  assert.deepEqual(await port.createIssue({}), { key: 'CHK-9' });
+  assert.equal(port.requestCount, 2);
+});

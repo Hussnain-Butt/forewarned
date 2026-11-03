@@ -9,18 +9,20 @@ const SUMMARY_CHARS = 255;
 
 const citedItems = (reason, evidenceById) => (reason.evidenceIds || []).map((id) => evidenceById.get(id)).filter(Boolean);
 
-// The work item keys an evidence item links, without the epic, each once.
-const keysOf = (item, epicKey) => [...new Set((item.links || []).map((link) => link.key))].filter((key) => key !== epicKey);
+// What an evidence item is about, when that tells one reason from another: the blocker it names or
+// the person whose load it is. Base rates, examples and people's other epics change as the space's
+// history grows, so they don't count (M5 review).
+const subjectOf = (item) => ({ 'open-blocker': item.about?.blocker, 'load-person': item.about?.name }[item.type] ?? null);
 
-// AC 10: the rule ID (rule-based) or the normalized title (agent), plus the sorted cited work item
-// keys, so the same reason in a later run finds its task. Case and punctuation don't count, so an
-// agent title reworded only in those still matches.
-export function fingerprintOf(reason, evidenceById, epicKey) {
-  const keys = [...new Set(citedItems(reason, evidenceById).flatMap((item) => keysOf(item, epicKey)))].sort();
+// AC 10: the rule ID (rule-based) or the normalized title (agent), plus the sorted subjects of its
+// cited evidence, so the same reason in a later run finds its task even after more epics finish.
+// Case and punctuation don't count, so an agent title reworded only in those still matches.
+export function fingerprintOf(reason, evidenceById) {
+  const subjects = [...new Set(citedItems(reason, evidenceById).map(subjectOf).filter(Boolean))].sort();
   const name = reason.ruleId
     ? `rule:${reason.ruleId}`
     : `agent:${String(reason.title ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()}`;
-  return `${name}|${keys.join(',')}`;
+  return `${name}|${subjects.join(',')}`;
 }
 
 // AC 6 and the markup edge case: the mitigation as one plain line, cut at a word boundary.

@@ -21,6 +21,10 @@ const messageFor = (name, status) => {
   return `Jira returned status ${status} for the ${name} request.`;
 };
 
+// Senders that change Jira (story 006). A 5xx can come after the change was made, so they are not
+// sent again after one; a 429 means Jira didn't take the request, so that one is still retried.
+const CHANGES = new Set(['createIssue', 'createLink']);
+
 // Wraps every sender with the same counting, retry and error handling. A 429 or 5xx is retried
 // once after Retry-After seconds (default 2), but only when the retry would still finish before
 // `deadline` (a Date.now() timestamp); otherwise the run fails with a clear message.
@@ -31,7 +35,8 @@ export function createJira(senders, { deadline, now = Date.now, sleep = (ms) => 
       for (let attempt = 1; ; attempt += 1) {
         port.requestCount += 1;
         const response = await send(...args);
-        if ((response.status === 429 || response.status >= 500) && attempt === 1) {
+        const retryable = response.status === 429 || (response.status >= 500 && !CHANGES.has(name));
+        if (retryable && attempt === 1) {
           const waitMs = (Number(response.headers?.get('retry-after')) || DEFAULT_RETRY_SECONDS) * 1000;
           if (now() + waitMs < deadline) {
             await sleep(waitMs);

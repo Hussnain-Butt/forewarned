@@ -14,14 +14,31 @@ const evidence = new Map([
 ]);
 const EPIC = 'CHK-12';
 
+// What a reason is about, beyond its rule or title: the blocker it names (open-blocker) or the
+// person (load-person). Base rates, examples and people's other epics change as the space's
+// history grows, so they are left out and a later run finds the same task (AC 10–11).
+const blocker = { id: 'B1', type: 'open-blocker', baseRate: false, fact: 'PLT-31 blocks CHK-143.', about: { space: 'PLT', blocker: 'PLT-31' }, links: [link('PLT-31', 'Token service'), link('CHK-143', 'Refunds')] };
+const person = { id: 'P1', type: 'load-person', baseRate: false, fact: 'Ada has 18 open work items.', about: { name: 'Ada Isadora' }, links: [link('CHK-12', 'Checkout v2 launch'), link('CHK-129', 'Gift cards'), link('PLT-21', 'Gateway')] };
+const subjects = new Map([...evidence, ['B1', blocker], ['P1', person]]);
+
 test('fingerprint', () => {
-  assert.equal(fingerprintOf({ ruleId: 'dependency', evidenceIds: ['E2', 'E1'] }, evidence, EPIC), 'rule:dependency|CHK-7,PLT-31');
-  const loud = fingerprintOf({ title: 'PLT work could block Checkout v2 launch!', evidenceIds: ['E2'] }, evidence, EPIC);
-  const quiet = fingerprintOf({ title: 'plt work could block checkout v2 launch', evidenceIds: ['E2'] }, evidence, EPIC);
+  assert.equal(fingerprintOf({ ruleId: 'dependency', evidenceIds: ['B1', 'E1', 'E2'] }, subjects), 'rule:dependency|PLT-31');
+  assert.equal(fingerprintOf({ ruleId: 'load', evidenceIds: ['P1', 'E3'] }, subjects), 'rule:load|Ada Isadora');
+  assert.equal(fingerprintOf({ ruleId: 'slip-base-rate', evidenceIds: ['E1', 'E2'] }, subjects), 'rule:slip-base-rate|');
+  const loud = fingerprintOf({ title: 'PLT work could block Checkout v2 launch!', evidenceIds: ['B1', 'E1'] }, subjects);
+  const quiet = fingerprintOf({ title: 'plt work could block checkout v2 launch', evidenceIds: ['B1'] }, subjects);
   assert.equal(loud, quiet);
-  assert.ok(loud.startsWith('agent:plt work could block checkout v2 launch|'));
-  assert.notEqual(fingerprintOf({ title: 'PLT work could block Checkout v2 launch!', evidenceIds: ['E1'] }, evidence, EPIC), loud);
-  assert.equal(fingerprintOf({ ruleId: 'scope', evidenceIds: ['E3'] }, evidence, EPIC), 'rule:scope|', 'the epic is never a cited key');
+  assert.equal(loud, 'agent:plt work could block checkout v2 launch|PLT-31');
+  const otherBlocker = { ...blocker, id: 'B2', about: { space: 'PLT', blocker: 'PLT-40' } };
+  assert.notEqual(fingerprintOf({ ruleId: 'dependency', evidenceIds: ['B2'] }, new Map([['B2', otherBlocker]])), 'rule:dependency|PLT-31', 'another blocker is another reason');
+});
+
+test("a fingerprint doesn't change when the history behind a reason does", () => {
+  const grown = new Map([...subjects, ['E1', { ...evidence.get('E1'), links: [link('CHK-7', 'Wallet top-up'), link('CHK-170', 'New epic')] }],
+    ['P1', { ...person, links: [...person.links, link('PLT-50', 'Another epic')] }]]);
+  for (const reason of [{ ruleId: 'dependency', evidenceIds: ['B1', 'E1'] }, { ruleId: 'load', evidenceIds: ['P1'] }, { ruleId: 'slip-base-rate', evidenceIds: ['E1'] }]) {
+    assert.equal(fingerprintOf(reason, grown), fingerprintOf(reason, subjects));
+  }
 });
 
 test('summary', () => {
