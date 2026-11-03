@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ForgeReconciler, { Button, Inline, SectionMessage, SectionMessageAction, Spinner, Stack, Text } from '@forge/react';
-import { invoke, rovo } from '@forge/bridge';
+import { invoke, rovo, view } from '@forge/bridge';
 import { Report } from './report.jsx';
 import { RunSteps } from './running.jsx';
+import { TaskBar } from './tasks.jsx';
 import { EPICS_ONLY } from '../premortem/epic.js';
 
-// The Forewarned epic panel (story 005): run the pre-mortem, follow its steps, read the report, and
-// ask the Forewarned agent in Rovo for its write-up.
+// The Forewarned epic panel (story 005): run the pre-mortem, follow its steps, read the report, ask
+// the Forewarned agent in Rovo for its write-up, and create tasks for the reasons (story 006).
 
 const RUN_POLL_MS = 2000;
 const SLOW_AFTER_MS = 60 * 1000;
@@ -19,9 +20,15 @@ const AGENT_TAB = 0;
 const RULE_TAB = 1;
 const LOAD_ERROR = "Forewarned couldn't load the pre-mortem. Try again in a minute.";
 const START_ERROR = "Forewarned couldn't start the run. Try again in a minute.";
+const TASKS_ERROR = "Forewarned couldn't create the tasks. Try again in a minute.";
 const wait = (ms) => new Promise((done) => { setTimeout(done, ms); });
 // An agent write-up on the current evidence run; a stale one shows only the "earlier run" message.
 const hasCurrentAgent = (panel) => Boolean(panel?.report?.agent && !panel.report.agent.stale);
+// Which report the ticks were made on: a re-run or a new agent write-up changes it (story 006).
+const reportStamp = (panel) => `${panel?.report?.runAt ?? ''}|${panel?.report?.agent?.savedAt ?? ''}`;
+const NONE = new Set();
+// The reasons the reader can tick: the rule-based ones and a current agent write-up's.
+const reasonsOf = (panel) => [...(panel?.report?.ruleBased?.reasons ?? []), ...(hasCurrentAgent(panel) ? panel.report.agent.reasons : [])];
 
 const App = () => {
   const [panel, setPanel] = useState(null);
@@ -39,6 +46,13 @@ const App = () => {
     tabRef.current = index;
     setTab(index);
   };
+  // Story 006: the ticked reasons (by fingerprint) of both tabs, with the report they were ticked
+  // on; the last create's { results } or { error, fingerprints }; and whether view.refresh() failed.
+  const [selection, setSelection] = useState({ stamp: '', fingerprints: NONE });
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
+  const [taskOutcome, setTaskOutcome] = useState(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
 
   // Resolves to the panel data, or null when it couldn't be loaded. A stale agent write-up has no
   // reasons to show, so the panel opens on the rule-based ones.
@@ -148,8 +162,43 @@ const App = () => {
     waitForAgent(panel.report?.agent?.savedAt ?? null, hasCurrentAgent(panel), Date.now());
   };
 
+  // Story 006 AC 4–9: creates the tasks, shows each one's result, marks the cards and refreshes the
+  // work item view so the child list shows them. The results are stored first, so a panel that the
+  // refresh remounts shows them again (open question 2).
+  const createTasks = async (fingerprints) => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    setCreating(true);
+    setRefreshFailed(false);
+    try {
+      const outcome = await invoke('createTasks', { fingerprints }).catch(() => ({ error: TASKS_ERROR }));
+      if (outcome?.error || !outcome?.results) {
+        setTaskOutcome({ error: outcome?.error ?? TASKS_ERROR, fingerprints });
+        return;
+      }
+      const titles = new Map(reasonsOf(panel).map((reason) => [reason.fingerprint, reason.title]));
+      const results = outcome.results.map((result) => ({ ...result, title: result.title ?? titles.get(result.fingerprint) ?? null }));
+      setTaskOutcome({ results });
+      setSelection({ stamp: reportStamp(panel), fingerprints: NONE });
+      const withKeys = results.filter((result) => result.key);
+      setPanel((current) => ({ ...current, tasks: { ...current.tasks, ...Object.fromEntries(withKeys.map((r) => [r.fingerprint, { key: r.key, url: r.url }])) } }));
+      if (withKeys.some((result) => !result.existed)) {
+        try {
+          await view.refresh();
+        } catch {
+          setRefreshFailed(true);
+        }
+      }
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
+    }
+  };
+
   useEffect(() => {
     load().then((result) => {
+      // Story 006: the results of this user's create a moment ago, when view.refresh() remounted us.
+      if (result?.taskResults) setTaskOutcome({ results: result.taskResults });
       // The request's age comes from the server, so the reader's computer clock doesn't matter.
       const request = result?.agentRequest;
       const unchanged = (result?.report?.agent?.savedAt ?? null) === request?.savedBefore;
@@ -184,6 +233,33 @@ const App = () => {
 
   const running = Boolean(run?.status);
   const { report, canRun } = panel;
+  // Story 006: ticks made on an earlier report are dropped, with a notice until the next tick.
+  const stamp = reportStamp(panel);
+  const chosen = selection.stamp === stamp ? selection.fingerprints : NONE;
+  const selectionCleared = selection.stamp !== stamp && selection.fingerprints.size > 0;
+  const toggle = (fingerprint) => {
+    const next = new Set(chosen);
+    if (next.has(fingerprint)) next.delete(fingerprint);
+    else next.add(fingerprint);
+    setSelection({ stamp, fingerprints: next });
+  };
+  const byFingerprint = panel.tasks ?? {};
+  const hasChoices = reasonsOf(panel).some((reason) => !byFingerprint[reason.fingerprint]);
+  const failed = taskOutcome?.results?.filter((result) => result.error).map((result) => result.fingerprint);
+  const taskBar = hasChoices || taskOutcome || refreshFailed || selectionCleared ? (
+    <TaskBar
+      count={chosen.size}
+      canCreate={panel.canCreate}
+      space={panel.space}
+      creating={creating}
+      onCreate={() => createTasks([...chosen])}
+      notice={selectionCleared}
+      outcome={taskOutcome}
+      refreshFailed={refreshFailed}
+      onRetry={() => createTasks(failed ?? taskOutcome.fingerprints)}
+      hasChoices={hasChoices}
+    />
+  ) : null;
   // AC 6 and 28: a failed run, or one still going after 5 minutes, is an error with Try again.
   const timedOut = `The run is taking longer than 5 minutes. ${canRun ? 'Try again, or refresh' : 'Refresh'} later to see the result.`;
   const runError = run?.failed ?? (run?.timedOut ? timedOut : null);
@@ -200,7 +276,11 @@ const App = () => {
           <Text>The agent&apos;s write-up is ready.</Text>
         </SectionMessage>
       ) : null}
-      {report ? <Report panel={panel} now={Date.now()} tab={tab} onTabChange={selectTab} /> : null}
+      {report ? (
+        <Report panel={panel} now={Date.now()} tab={tab} onTabChange={selectTab} tasks={{ selected: chosen, onToggle: toggle, canCreate: panel.canCreate, byFingerprint }}>
+          {taskBar}
+        </Report>
+      ) : null}
       {agentWait === 'waiting' ? (
         <Inline space="space.100" alignBlock="center">
           <Spinner size="small" label="Waiting" />
