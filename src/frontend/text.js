@@ -142,6 +142,9 @@ export const inReasonOrder = (reasons, selected) => reasons.map((reason) => reas
 // Story 006 AC 2: the button's live count.
 export const createLabel = (count) => (count ? `Create ${counted(count, 'task')}` : 'Create tasks');
 
+// Story 006 AC 4: the progress line while the tasks are being created (story 005 AC 30).
+export const creatingLine = (count) => `Creating ${counted(count, 'task')}…`;
+
 // Story 006 AC 8, 12–13: the results message for one create, in words. `line` comes before the new
 // keys, which the panel shows as links joined with ", " and ending with "."; an existing task counts
 // as created. `notes` say when a new task isn't under the epic (AC 5).
@@ -155,8 +158,10 @@ export function taskResultParts(results) {
     return { appearance: 'error', line: `Forewarned couldn't create the ${results.length === 1 ? 'task' : 'tasks'}.`, created, notes, failures };
   }
   const all = created.length === results.length;
+  // A task that is neither under the epic nor linked to it still needs the user, so it's a warning.
+  const unlinked = results.some((result) => result.key && !result.existed && result.asChild === false && !result.linked);
   return {
-    appearance: all ? 'success' : 'warning',
+    appearance: all && !unlinked ? 'success' : 'warning',
     line: all ? `Created ${counted(created.length, 'task')}: ` : `Created ${created.length} of ${counted(results.length, 'task')}: `,
     created,
     notes,

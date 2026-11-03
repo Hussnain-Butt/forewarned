@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  cardParts, checkLines, comparisonParts, createLabel, droppedLine, exactTime, headline, historyLine, inReasonOrder, isOld,
+  cardParts, checkLines, comparisonParts, createLabel, creatingLine, droppedLine, exactTime, headline, historyLine, inReasonOrder, isOld,
   likelihoodLozenge, relativeTime, sortByLikelihood, stepLines, taskResultParts,
 } from '../../src/frontend/text.js';
 
@@ -173,6 +173,18 @@ test('taskResultParts when nothing was created', () => {
   assert.deepEqual(none.created, []);
   assert.equal(none.failures.length, 2);
   assert.equal(taskResultParts([failed(1, 'e1')]).line, "Forewarned couldn't create the task.");
+});
+
+// Progress in words, not only a spinner (story 005 AC 30, story 006 AC 14).
+test('creatingLine', () => {
+  assert.equal(creatingLine(1), 'Creating 1 task…');
+  assert.equal(creatingLine(3), 'Creating 3 tasks…');
+});
+
+test('a task that could neither go under the epic nor be linked makes the message a warning', () => {
+  assert.equal(taskResultParts([made(1), made(2, { asChild: false, linked: false })]).appearance, 'warning');
+  assert.equal(taskResultParts([made(1), made(2, { asChild: false, linked: true })]).appearance, 'success');
+  assert.equal(taskResultParts([made(1, { asChild: false, existed: true })]).appearance, 'success');
 });
 
 test('taskResultParts says when a task is not under the epic', () => {

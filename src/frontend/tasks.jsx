@@ -1,6 +1,6 @@
 import React from 'react';
 import { Checkbox, Inline, Link, List, ListItem, LoadingButton, SectionMessage, SectionMessageAction, Stack, Text } from '@forge/react';
-import { createLabel, taskResultParts } from './text.js';
+import { createLabel, creatingLine, taskResultParts } from './text.js';
 
 // Story 006: tick the reasons to act on, create their tasks, and read what happened to each.
 
@@ -70,6 +70,7 @@ export const TaskBar = ({ count, canCreate, space, creating, onCreate, notice, o
         </Inline>
         {canCreate ? null : <Text color="color.text.subtle">{`You don't have permission to create work items in ${space}.`}</Text>}
         {canCreate && !count ? <Text color="color.text.subtle">Tick the reasons you want to act on.</Text> : null}
+        {creating ? <Text color="color.text.subtle">{creatingLine(count)}</Text> : null}
       </Stack>
     ) : null}
   </Stack>
