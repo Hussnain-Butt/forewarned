@@ -36,6 +36,9 @@ export function withFingerprints(report, pack) {
   };
 }
 
+// A work item's address on the site the pack was built on.
+export const browseUrl = (pack, key) => `${pack.epic.url.slice(0, pack.epic.url.indexOf('/browse/'))}/browse/${key}`;
+
 // The reasons the user in session sees, rule-based first, each with its fingerprint. A stale agent
 // write-up has no reasons for any reader (reportForReader).
 export async function readerReasons({ port, pack, report }) {
@@ -82,8 +85,7 @@ async function createAll({ deps: { port, kvs, now, deadline }, epic, stored, acc
     port.myPermissions(epic.key),
   ]);
   const space = epic.project.key;
-  const siteUrl = pack.epic.url.slice(0, pack.epic.url.indexOf('/browse/'));
-  const urlOf = (key) => `${siteUrl}/browse/${key}`;
+  const urlOf = (key) => browseUrl(pack, key);
   const byFingerprint = new Map(reasons.map((reason) => [reason.fingerprint, reason]));
 
   // A task the user can no longer read was deleted (or hidden from them); its reason can be ticked

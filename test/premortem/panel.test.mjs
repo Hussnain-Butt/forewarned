@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { runPremortemAction } from '../../src/premortem/actions.js';
 import { handleRun } from '../../src/premortem/consumer.js';
 import { getPanelData, requestAgentAction } from '../../src/premortem/panel.js';
+import { createTasksAction } from '../../src/premortem/tasks.js';
 import { keyOf } from '../engine/seed-snapshot.mjs';
 import { fakeKvs, fakeQueue, fakeSenders, idOf, portOf } from './fakes.mjs';
 
@@ -22,7 +23,7 @@ async function panelFor(readerOptions = {}, { withRun = true, kvs = fakeKvs(), a
     await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' });
     await handleRun({ event: { body: { runId: 'r1', epicKey: EPIC, epicId: EPIC_ID, accountId: 'acc-1' } }, senders: builder.senders, kvs, now: () => NOW, log: () => {} });
   }
-  return getPanelData({ deps: { port: portOf(fakeSenders(readerOptions).senders), kvs }, epicKey: EPIC, accountId });
+  return getPanelData({ deps: { port: portOf(fakeSenders(readerOptions).senders), kvs, now: () => NOW }, epicKey: EPIC, accountId });
 }
 
 test('the builder gets the report, the evidence, the comparison set and may run', async () => {
@@ -51,7 +52,9 @@ test('a viewer who can\'t edit may read but not run', async () => {
 
 test('before any run the panel gets no report', async () => {
   const panel = await panelFor({}, { withRun: false });
-  assert.deepEqual(panel, { issueKey: EPIC, canRun: true, report: null, evidence: [], comparison: null, epic: null, agentRequest: null });
+  assert.deepEqual(panel, {
+    issueKey: EPIC, canRun: true, canCreate: true, space: 'CHK', report: null, evidence: [], comparison: null, epic: null, agentRequest: null, tasks: {}, taskResults: null,
+  });
 });
 
 test('a work item that isn\'t an epic gets "This panel works on epics only." (005 AC 3)', async () => {
@@ -100,4 +103,58 @@ test("a reader who can't see a comparison epic doesn't get it in the comparison 
 test("asking the agent about an epic the user can't see is refused", async () => {
   const deps = { port: portOf(fakeSenders({ hidden: [EPIC] }).senders), kvs: fakeKvs(), now: () => NOW };
   assert.deepEqual(await requestAgentAction({ deps, epicKey: EPIC, accountId: 'acc-1' }), { error: `${EPIC} doesn't exist, or you don't have permission to see it.` });
+});
+
+// Story 006: what the panel needs to tick reasons and show their tasks.
+const allReasons = (panel) => [...panel.report.ruleBased.reasons, ...(panel.report.agent?.reasons ?? [])];
+
+test('reasons carry fingerprints and the user may create', async () => {
+  const panel = await panelFor();
+  assert.ok(allReasons(panel).length >= 3);
+  assert.ok(allReasons(panel).every((r) => typeof r.fingerprint === 'string' && r.fingerprint.startsWith(`rule:${r.ruleId}|`)));
+  assert.equal(panel.canCreate, true);
+  assert.equal(panel.space, 'CHK');
+  assert.deepEqual(panel.tasks, {});
+  assert.equal(panel.taskResults, null);
+});
+
+test('a viewer without create permission gets canCreate false', async () => {
+  assert.equal((await panelFor({ canCreate: false })).canCreate, false);
+});
+
+// acc-1 creates tasks for the first two reasons in a Jira that `jira` (created, deleted) shares.
+async function withTwoTasks(jira) {
+  const kvs = fakeKvs();
+  const panel = await panelFor(jira, { kvs, accountId: 'acc-1' });
+  const fingerprints = allReasons(panel).slice(0, 2).map((r) => r.fingerprint);
+  const deps = { port: portOf(fakeSenders(jira).senders), kvs, now: () => NOW, deadline: Infinity };
+  await createTasksAction({ deps, epicKey: EPIC, accountId: 'acc-1', fingerprints });
+  return { kvs, fingerprints };
+}
+
+test('created tasks come back by fingerprint', async () => {
+  const jira = { created: [], deleted: [] };
+  const { kvs, fingerprints } = await withTwoTasks(jira);
+  const panel = await getPanelData({ deps: { port: portOf(fakeSenders(jira).senders), kvs, now: () => NOW }, epicKey: EPIC, accountId: 'acc-2' });
+  assert.deepEqual(Object.keys(panel.tasks).sort(), [...fingerprints].sort());
+  assert.deepEqual(fingerprints.map((fp) => panel.tasks[fp].key), ['CHK-901', 'CHK-902']);
+  assert.ok(fingerprints.every((fp) => panel.tasks[fp].url.endsWith(`/browse/${panel.tasks[fp].key}`)));
+});
+
+test('a deleted task is no longer offered', async () => {
+  const jira = { created: [], deleted: [] };
+  const { kvs, fingerprints } = await withTwoTasks(jira);
+  jira.deleted.push('CHK-901');
+  const panel = await getPanelData({ deps: { port: portOf(fakeSenders(jira).senders), kvs, now: () => NOW }, epicKey: EPIC, accountId: 'acc-1' });
+  assert.deepEqual(Object.keys(panel.tasks), [fingerprints[1]]);
+});
+
+// view.refresh() may remount the panel; its creator gets the results back for a few minutes.
+test('the last results come back to their creator for 5 minutes', async () => {
+  const jira = { created: [], deleted: [] };
+  const { kvs } = await withTwoTasks(jira);
+  const read = (accountId, now) => getPanelData({ deps: { port: portOf(fakeSenders(jira).senders), kvs, now: () => now }, epicKey: EPIC, accountId });
+  assert.deepEqual((await read('acc-1', NOW + 60000)).taskResults.map((r) => r.key), ['CHK-901', 'CHK-902']);
+  assert.equal((await read('acc-2', NOW + 60000)).taskResults, null);
+  assert.equal((await read('acc-1', NOW + 301000)).taskResults, null);
 });
