@@ -7,11 +7,14 @@ import { createJira } from '../engine/jira.js';
 import { getPanelData, requestAgentAction } from '../premortem/panel.js';
 import { startRun } from '../premortem/run.js';
 import { readRunStatus } from '../premortem/store.js';
+import { createTasksAction } from '../premortem/tasks.js';
 
 const resolver = new Resolver();
 const runQueue = new Queue({ key: 'premortem-run' });
 // Resolvers have 25 s; starting a run needs only a few requests.
 const START_BUDGET_MS = 15000;
+// Creating tasks makes one request per task, so it gets most of the 25 s.
+const TASKS_BUDGET_MS = 20000;
 
 // Everything the panel shows, filtered for this viewer (story 005; story 002 AC 2).
 resolver.define('getPanel', async ({ context }) => {
@@ -57,6 +60,21 @@ resolver.define('startRun', async ({ context }) => {
   } catch (error) {
     console.error('startRun failed:', error instanceof Error ? error.name : 'Unknown error');
     return { error: "Forewarned couldn't start the run. Try again in a minute." };
+  }
+});
+
+// Story 006: creates a task for each reason the user ticked. The panel sends only fingerprints; the
+// epic and the account come from the Forge context.
+resolver.define('createTasks', async ({ payload, context }) => {
+  const issueKey = context.extension?.issue?.key;
+  if (!issueKey || !context.accountId) return { error: 'This panel needs a work item and a signed-in user.' };
+  try {
+    const deadline = Date.now() + TASKS_BUDGET_MS;
+    const port = createJira(forgeSenders(), { deadline });
+    return await createTasksAction({ deps: { port, kvs, now: Date.now, deadline }, epicKey: issueKey, accountId: context.accountId, fingerprints: payload?.fingerprints });
+  } catch (error) {
+    console.error('createTasks failed:', error instanceof Error ? error.name : 'Unknown error');
+    return { error: "Forewarned couldn't create the tasks. Try again in a minute." };
   }
 });
 

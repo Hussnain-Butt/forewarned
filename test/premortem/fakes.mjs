@@ -5,7 +5,9 @@ import { createJira } from '../../src/engine/jira.js';
 import { seedPort } from '../engine/seed-port.mjs';
 
 // `writes` keeps every value set, in order, so tests can check the steps of a run. A key for which
-// `failSet` returns true makes `set` throw, like a KVS write that fails.
+// `failSet` returns true makes `set` throw, like a KVS write that fails. Like Forge KVS, a set with
+// `keyPolicy: 'FAIL_IF_EXISTS'` throws when the key exists; values never expire here, like an
+// expired value KVS hasn't deleted yet.
 export function fakeKvs({ failSet = () => false } = {}) {
   const data = new Map();
   const writes = [];
@@ -15,9 +17,11 @@ export function fakeKvs({ failSet = () => false } = {}) {
     get: async (key) => data.get(key)?.value,
     set: async (key, value, options) => {
       if (failSet(key)) throw new Error('KVS write failed');
+      if (options?.keyPolicy === 'FAIL_IF_EXISTS' && data.has(key)) throw new Error('The key already exists');
       data.set(key, { value: structuredClone(value), options });
       writes.push({ key, value: structuredClone(value) });
     },
+    delete: async (key) => { data.delete(key); },
   };
 }
 
@@ -38,15 +42,58 @@ export function fakeQueue(kvs) {
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-// Seed-port senders plus the user's edit permission on the epic.
-export function fakeSenders({ canEdit = true, ...seedOptions } = {}) {
+// Work item types and create fields as Jira's create metadata lists them (story 006 AC 5).
+export const CREATE_TYPES = [
+  { id: '10000', name: 'Epic', hierarchyLevel: 1, subtask: false },
+  { id: '10001', name: 'Story', hierarchyLevel: 0, subtask: false },
+  { id: '10002', name: 'Task', hierarchyLevel: 0, subtask: false },
+  { id: '10003', name: 'Bug', hierarchyLevel: 0, subtask: false },
+  { id: '10004', name: 'Sub-task', hierarchyLevel: -1, subtask: true },
+];
+const field = (fieldId, name, required = false, hasDefaultValue = false) => ({ fieldId, key: fieldId, name, required, hasDefaultValue });
+export const CREATE_FIELDS = [
+  field('summary', 'Summary', true), field('issuetype', 'Work type', true), field('project', 'Space', true),
+  field('parent', 'Parent'), field('description', 'Description'), field('labels', 'Labels'), field('reporter', 'Reporter', true, true),
+];
+
+// Seed-port senders plus the user's permissions on the epic and work item creation. `created`
+// (bodies of the work items created, with their new IDs and keys CHK-901, CHK-902, …), `links` and
+// `deleted` (keys deleted since) can be shared between senders, so another user reads the same
+// Jira. `failCreate(n)` gives an HTTP status for the n-th create request (retries count), or 0.
+export function fakeSenders({
+  canEdit = true, canCreate = true, types = CREATE_TYPES, fields = CREATE_FIELDS, failCreate = () => 0,
+  created = [], links = [], deleted = [], ...seedOptions
+} = {}) {
   const { senders, log, keys } = seedPort(seedOptions);
+  let createRequests = 0;
+  const visibleCreated = (idsOrKeys) => created.filter((t) => !deleted.includes(t.key) && (idsOrKeys.includes(t.id) || idsOrKeys.includes(t.key)));
   return {
     log,
     keys,
+    created,
+    links,
+    deleted,
     senders: {
       ...senders,
-      myPermissions: async () => json({ permissions: { EDIT_ISSUES: { havePermission: canEdit } } }),
+      myPermissions: async () => json({ permissions: { EDIT_ISSUES: { havePermission: canEdit }, CREATE_ISSUES: { havePermission: canCreate } } }),
+      createMetaTypes: async () => json({ issueTypes: types, startAt: 0, maxResults: 200, total: types.length }),
+      createMetaFields: async () => json({ fields, startAt: 0, maxResults: 200, total: fields.length }),
+      createIssue: async (fields) => {
+        const body = { fields };
+        createRequests += 1;
+        const status = failCreate(createRequests);
+        if (status) return json({ errorMessages: ['Failed'] }, status);
+        const n = created.length + 1;
+        const task = { id: String(30000 + n), key: `${body.fields.project.key}-${900 + n}`, body };
+        created.push(task);
+        return json({ id: task.id, key: task.key, self: `https://seed.example/rest/api/3/issue/${task.id}` }, 201);
+      },
+      createLink: async (body) => { links.push(body); return new Response(null, { status: 201 }); },
+      bulkIssues: async (body) => {
+        const page = await (await senders.bulkIssues(body)).json();
+        const tasks = visibleCreated(body.issueIdsOrKeys).map((t) => ({ id: t.id, key: t.key, fields: { summary: t.body.fields.summary } }));
+        return json({ ...page, issues: [...page.issues, ...tasks] });
+      },
     },
   };
 }

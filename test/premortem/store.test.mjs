@@ -4,8 +4,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  readAgentRequest, readPremortem, readRunStatus, writeAgentRequest, writePremortem, writeRunStatus,
+  readActions, readAgentRequest, readPremortem, readRunStatus, releaseTasksLock, takeTasksLock, writeActions,
+  writeAgentRequest, writePremortem, writeRunStatus,
 } from '../../src/premortem/store.js';
+import { fakeKvs as policyKvs } from './fakes.mjs';
 
 const fakeKvs = () => {
   const data = new Map();
@@ -45,4 +47,34 @@ test('an agent request is remembered per epic and user for 5 minutes', async () 
   assert.deepEqual(kvs.data.get('agent:10001:acc-1').options, { ttl: { unit: 'MINUTES', value: 5 } });
   assert.deepEqual(await readAgentRequest(kvs, '10001', 'acc-1'), { savedBefore: null, requestedAt: '2026-11-02T08:00:00.000Z' });
   assert.equal(await readAgentRequest(kvs, '10001', 'acc-2'), null);
+});
+
+// Story 006 AC 10: reason → task, in KVS rather than on the epic, kept until the epic's next change.
+test('the tasks map is one key per epic, without expiry', async () => {
+  const kvs = fakeKvs();
+  assert.deepEqual(await readActions(kvs, '10001'), { tasks: {}, lastBatch: null });
+  const actions = { tasks: { 'rule:x|': { id: '1', key: 'CHK-1', asChild: true, createdAt: 't', createdBy: 'acc-1' } }, lastBatch: null };
+  await writeActions(kvs, '10001', actions);
+  assert.deepEqual([...kvs.data.keys()], ['actions:10001']);
+  assert.equal(kvs.data.get('actions:10001').options, undefined);
+  assert.deepEqual(await readActions(kvs, '10001'), actions);
+});
+
+// Story 006 AC 4: a second create on the same epic is refused while one runs.
+test('the tasks lock', async () => {
+  const kvs = policyKvs();
+  assert.equal(await takeTasksLock(kvs, '10001', 1000), true);
+  assert.deepEqual(kvs.data.get('tasks-lock:10001'), { value: { at: 1000 }, options: { keyPolicy: 'FAIL_IF_EXISTS', ttl: { unit: 'SECONDS', value: 60 } } });
+  assert.equal(await takeTasksLock(kvs, '10001', 2000), false);
+  assert.equal(await takeTasksLock(kvs, '10002', 2000), true, 'another epic has its own lock');
+  await releaseTasksLock(kvs, '10001');
+  assert.equal(await takeTasksLock(kvs, '10001', 3000), true);
+  assert.equal(await takeTasksLock(kvs, '10001', 62999), false, 'under 60 s old');
+  assert.equal(await takeTasksLock(kvs, '10001', 63000), true, '60 s old: taken over');
+  assert.equal(kvs.data.get('tasks-lock:10001').value.at, 63000);
+});
+
+test('a failing lock write is not mistaken for a held lock', async () => {
+  const kvs = policyKvs({ failSet: () => true });
+  await assert.rejects(takeTasksLock(kvs, '10001', 1000), /KVS write failed/);
 });

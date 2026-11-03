@@ -37,3 +37,40 @@ export async function readAgentRequest(kvs, epicId, accountId) {
 }
 
 export const writeAgentRequest = (kvs, epicId, accountId, request) => kvs.set(agentRequestKey(epicId, accountId), request, { ttl: AGENT_REQUEST_TTL });
+
+// Story 006 AC 10: which task each reason got, by fingerprint, and the last batch's results (so a
+// panel that `view.refresh()` remounted can show them again). In KVS, not on the epic: anyone who
+// can browse the epic could read the cited keys in an entity property (story 003 AC 6).
+const actionsKey = (epicId) => `actions:${epicId}`;
+
+export async function readActions(kvs, epicId) {
+  return (await kvs.get(actionsKey(epicId))) ?? { tasks: {}, lastBatch: null };
+}
+
+export const writeActions = (kvs, epicId, actions) => kvs.set(actionsKey(epicId), actions);
+
+// Story 006 AC 4: one create at a time per epic. The lock expires after 60 seconds, but KVS may
+// return an expired value for up to 48 hours, so a lock 60 s or older (a crashed call) is taken over.
+const TASKS_LOCK_MS = 60000;
+const TASKS_LOCK_TTL = { unit: 'SECONDS', value: TASKS_LOCK_MS / 1000 };
+const tasksLockKey = (epicId) => `tasks-lock:${epicId}`;
+
+// True when this call now holds the lock.
+export async function takeTasksLock(kvs, epicId, nowMs) {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await kvs.set(tasksLockKey(epicId), { at: nowMs }, { keyPolicy: 'FAIL_IF_EXISTS', ttl: TASKS_LOCK_TTL });
+      return true;
+    } catch (error) {
+      // KVS doesn't document the error for an existing key, so the lock itself is read: no lock
+      // means the write failed for another reason.
+      const held = await kvs.get(tasksLockKey(epicId));
+      if (!held) throw error;
+      if (nowMs - held.at < TASKS_LOCK_MS) return false;
+      await kvs.delete(tasksLockKey(epicId));
+    }
+  }
+  return false;
+}
+
+export const releaseTasksLock = (kvs, epicId) => kvs.delete(tasksLockKey(epicId));

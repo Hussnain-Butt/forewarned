@@ -26,7 +26,13 @@ export function forgeSenders(jira = api.asUser()) {
     count: (jql) => jira.requestJira(route`/rest/api/3/search/approximate-count`, post({ jql })),
     changelogs: (body) => jira.requestJira(route`/rest/api/3/changelog/bulkfetch`, post(body)),
     bulkIssues: (body) => jira.requestJira(route`/rest/api/3/issue/bulkfetch`, post(body)),
-    // Story 003: may the user change the epic's pre-mortem (start a run, save a write-up)?
-    myPermissions:(key) => jira.requestJira(route`/rest/api/3/mypermissions?issueKey=${key}&permissions=EDIT_ISSUES`, GET),
+    // Story 003: may the user change the epic's pre-mortem (start a run, save a write-up)? Story
+    // 006: may they create work items in its space?
+    myPermissions: (key) => jira.requestJira(route`/rest/api/3/mypermissions?issueKey=${key}&permissions=EDIT_ISSUES,CREATE_ISSUES`, GET),
+    // Story 006: the work item types the user can create in a space, and one type's create fields.
+    createMetaTypes: (projectKey) => jira.requestJira(route`/rest/api/3/issue/createmeta/${projectKey}/issuetypes?maxResults=200`, GET),
+    createMetaFields: (projectKey, typeId) => jira.requestJira(route`/rest/api/3/issue/createmeta/${projectKey}/issuetypes/${typeId}?maxResults=200`, GET),
+    createIssue: (fields) => jira.requestJira(route`/rest/api/3/issue`, post({ fields })),
+    createLink: (body) => jira.requestJira(route`/rest/api/3/issueLink`, post(body)),
   };
 }
