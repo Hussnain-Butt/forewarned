@@ -151,17 +151,17 @@ const failed = (n, error) => ({ fingerprint: `f${n}`, title: `Reason ${n}`, erro
 test('taskResultParts when every task was created', () => {
   const all = taskResultParts([made(1), made(2), made(3)]);
   assert.equal(all.appearance, 'success');
-  assert.equal(all.line, 'Created 3 tasks: ');
+  assert.equal(all.line, 'Created 3 tasks:');
   assert.deepEqual(all.created, [{ key: 'CHK-901', url: 'u1' }, { key: 'CHK-902', url: 'u2' }, { key: 'CHK-903', url: 'u3' }]);
   assert.deepEqual([all.notes, all.failures], [[], []]);
-  assert.equal(taskResultParts([made(1)]).line, 'Created 1 task: ');
-  assert.equal(taskResultParts([made(1, { existed: true }), made(2)]).line, 'Created 2 tasks: ', 'an existing task counts as created');
+  assert.equal(taskResultParts([made(1)]).line, 'Created 1 task:');
+  assert.equal(taskResultParts([made(1, { existed: true }), made(2)]).line, 'Created 2 tasks:', 'an existing task counts as created');
 });
 
 test('taskResultParts when some failed', () => {
   const some = taskResultParts([made(1), failed(2, 'Jira is busy right now. Try again in a minute.'), made(3)]);
   assert.equal(some.appearance, 'warning');
-  assert.equal(some.line, 'Created 2 of 3 tasks: ');
+  assert.equal(some.line, 'Created 2 of 3 tasks:');
   assert.deepEqual(some.created.map((c) => c.key), ['CHK-901', 'CHK-903']);
   assert.deepEqual(some.failures, [{ title: 'Reason 2', error: 'Jira is busy right now. Try again in a minute.' }]);
 });

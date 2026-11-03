@@ -146,8 +146,8 @@ export const createLabel = (count) => (count ? `Create ${counted(count, 'task')}
 export const creatingLine = (count) => `Creating ${counted(count, 'task')}…`;
 
 // Story 006 AC 8, 12–13: the results message for one create, in words. `line` comes before the new
-// keys, which the panel shows as links joined with ", " and ending with "."; an existing task counts
-// as created. `notes` say when a new task isn't under the epic (AC 5).
+// keys, which the panel shows as links of their own, not inside the sentence (axe link-in-text-block);
+// an existing task counts as created. `notes` say when a new task isn't under the epic (AC 5).
 export function taskResultParts(results) {
   const created = results.filter((result) => result.key).map(({ key, url }) => ({ key, url }));
   const failures = results.filter((result) => result.error).map(({ title, error }) => ({ title, error }));
@@ -162,7 +162,7 @@ export function taskResultParts(results) {
   const unlinked = results.some((result) => result.key && !result.existed && result.asChild === false && !result.linked);
   return {
     appearance: all && !unlinked ? 'success' : 'warning',
-    line: all ? `Created ${counted(created.length, 'task')}: ` : `Created ${created.length} of ${counted(results.length, 'task')}: `,
+    line: all ? `Created ${counted(created.length, 'task')}:` : `Created ${created.length} of ${counted(results.length, 'task')}:`,
     created,
     notes,
     failures,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Checkbox, Inline, Link, List, ListItem, LoadingButton, SectionMessage, SectionMessageAction, Stack, Text } from '@forge/react';
+import { Checkbox, Inline, Link, LinkButton, List, ListItem, LoadingButton, SectionMessage, SectionMessageAction, Stack, Text } from '@forge/react';
 import { createLabel, creatingLine, taskResultParts } from './text.js';
 
 // Story 006: tick the reasons to act on, create their tasks, and read what happened to each.
@@ -13,8 +13,9 @@ export const TaskChoice = ({ reason, task, isChecked, canCreate, onToggle }) => 
   <Checkbox label="Create a task for this reason" isChecked={isChecked} isDisabled={!canCreate} onChange={() => onToggle(reason.fingerprint)} />
 ));
 
-// AC 8, 12–13: the new keys as links, why a task isn't under the epic, and each failure in words
-// (never colour alone), with Try again for the failed ones only.
+// AC 8, 12–13: the new keys as links (like the evidence chips, so they don't hide in the sentence),
+// why a task isn't under the epic, and each failure in words (never colour alone), with Try again
+// for the failed ones only.
 const TaskResults = ({ results, onRetry }) => {
   const parts = taskResultParts(results);
   return (
@@ -23,16 +24,12 @@ const TaskResults = ({ results, onRetry }) => {
       actions={parts.failures.length ? <SectionMessageAction onClick={onRetry}>Try again</SectionMessageAction> : undefined}
     >
       <Stack space="space.100">
-        <Text>
-          {parts.line}
-          {parts.created.map((task, i) => (
-            <React.Fragment key={task.key}>
-              {i ? ', ' : ''}
-              <Link href={task.url} openNewTab>{task.key}</Link>
-            </React.Fragment>
-          ))}
-          {parts.created.length ? '.' : ''}
-        </Text>
+        <Text>{parts.line}</Text>
+        {parts.created.length ? (
+          <Inline space="space.050" rowSpace="space.050" shouldWrap>
+            {parts.created.map((task) => <LinkButton key={task.key} href={task.url} target="_blank" spacing="compact">{task.key}</LinkButton>)}
+          </Inline>
+        ) : null}
         {parts.notes.map((note) => <Text key={note}>{note}</Text>)}
         {parts.failures.length ? (
           <List type="unordered">
