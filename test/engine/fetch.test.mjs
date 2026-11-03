@@ -99,7 +99,7 @@ test('I-1: imported history without status IDs still finds the start by status n
 
 test('I-2: "work items at the start" uses a time-zone-free relative bound', async () => {
   const { log } = await fetchSeed();
-  assert.ok(log.some((jql) => /^parent = "[A-Z]+-\d+" AND created < "-\d+m"$/.test(jql)));
+  assert.ok(log.some((jql) => /^parent = "[A-Z]+-\d+" AND \(labels is EMPTY OR labels != "pre-mortem"\) AND created < "-\d+m"$/.test(jql)));
   assert.ok(!log.some((jql) => /created < "\d{4}-/.test(jql)));
 });
 
@@ -152,17 +152,30 @@ test('AC 33: a wide epic (25 people, 20 comparable epics, busy people) stays wit
   assert.ok(port.requestCount <= 150, `${port.requestCount} requests`);
 });
 
+// Story 006: the tasks Forewarned creates are the team acting on the pre-mortem, not the plan
+// growing, so the next run's scope counts leave them out (but they stay open, unassigned work).
+test("the pre-mortem's own tasks are not counted as scope growth", async () => {
+  const { snapshot: before } = await fetchSeed();
+  const { snapshot } = await fetchSeed({ edit: (records) => {
+    records.set('t1', story('t1', { labels: ['pre-mortem'] }));
+    records.set('t2', story('t2', { labels: ['pre-mortem', 'payments'] }));
+  } });
+  assert.deepEqual([snapshot.epic.childCount, snapshot.epic.childCountAtStart], [before.epic.childCount, before.epic.childCountAtStart]);
+  const { snapshot: grown } = await fetchSeed({ edit: (records) => { records.set('t3', story('t3', { labels: ['payments'] })); } });
+  assert.equal(grown.epic.childCount, before.epic.childCount + 1, 'other new work items still count');
+});
+
 test('an epic that started today counts all its children as there at the start, without a bound query', async () => {
   const { snapshot, log } = await fetchSeed({ edit: (records) => { records.get('ll-chk-e11').start = 0; } });
   assert.equal(snapshot.epic.childCountAtStart, snapshot.epic.childCount);
-  assert.ok(!log.some((jql) => jql.startsWith(`parent = "${EPIC}" AND created <`)));
+  assert.ok(!log.some((jql) => jql.startsWith(`parent = "${EPIC}"`) && jql.includes('created <')));
 });
 
 test('the first failed request stops the other workers', async () => {
   const first = seedSnapshot().candidates[0].key;
-  const { senders, log } = seedPort({ now: NOW, failCount: (jql) => jql === `parent = "${first}"` });
+  const { senders, log } = seedPort({ now: NOW, failCount: (jql) => jql === `parent = "${first}" AND (labels is EMPTY OR labels != "pre-mortem")` });
   const port = createJira(senders, { deadline: Infinity, sleep: async () => {} });
   await assert.rejects(fetchSnapshot(port, EPIC, { today: TODAY, now: NOW, accountId: 'acc-requester' }), (e) => e.status === 500);
   // 5 workers start 5 comparable epics (2 counts each); the failure and its one retry stop the other 3.
-  assert.ok(log.filter((jql) => /^parent = "[A-Z]+-\d+"( AND created < "-\d+m")?$/.test(jql)).length <= 11);
+  assert.ok(log.filter((jql) => /^parent = "[A-Z]+-\d+" AND \(labels is EMPTY OR labels != "pre-mortem"\)( AND created < "-\d+m")?$/.test(jql)).length <= 11);
 });

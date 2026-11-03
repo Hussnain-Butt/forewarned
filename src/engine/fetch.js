@@ -144,11 +144,16 @@ const blockedList = (issues) => issues
 // Children in total and children created on or before the start day (AC 16). The engine counts
 // UTC days, but JQL reads a date like "2026-10-20" in the user's time zone, so the bound (midnight
 // UTC after the start day) is sent as "created more than N minutes ago", which has no time zone.
+// The mitigation tasks Forewarned creates (story 006, label `pre-mortem`) are the team acting on a
+// pre-mortem, not the plan growing, so they are left out. JQL's `!=` skips work items without
+// labels, hence the EMPTY clause.
+const NOT_PRE_MORTEM = '(labels is EMPTY OR labels != "pre-mortem")';
 async function childCounts(port, epic, now) {
   const minutesAgo = Math.ceil((now - (epic.start + 1) * DAY_MS) / 60000);
-  const total = count(port, `parent = ${quote(epic.key)}`);
+  const children = `parent = ${quote(epic.key)} AND ${NOT_PRE_MORTEM}`;
+  const total = count(port, children);
   if (minutesAgo <= 0) return { childCount: await total, childCountAtStart: await total }; // started today
-  const [childCount, childCountAtStart] = await Promise.all([total, count(port, `parent = ${quote(epic.key)} AND created < "-${minutesAgo}m"`)]);
+  const [childCount, childCountAtStart] = await Promise.all([total, count(port, `${children} AND created < "-${minutesAgo}m"`)]);
   return { childCount, childCountAtStart };
 }
 

@@ -102,12 +102,14 @@ export function seedPort({
     if (m) return sortByKey(all.filter((r) => isOpen(r) && r.parent && person(r)?.accountId === m[1]));
     return null;
   };
+  // The scope counts leave out the pre-mortem's own tasks (label `pre-mortem`).
+  const scopeChildrenOf = (key) => childrenOf(key).filter((r) => !r.labels.includes('pre-mortem'));
   const countOf = (jql) => {
-    let m = /^parent = "([\w-]+)"$/.exec(jql);
-    if (m) return childrenOf(m[1]).length;
+    let m = /^parent = "([\w-]+)" AND \(labels is EMPTY OR labels != "pre-mortem"\)$/.exec(jql);
+    if (m) return scopeChildrenOf(m[1]).length;
     // Relative bound: created more than N minutes before now. Seed work items are created at 09:00 UTC.
-    m = /^parent = "([\w-]+)" AND created < "-(\d+)m"$/.exec(jql);
-    if (m) return childrenOf(m[1]).filter((r) => (day0 + r.created) * 86400000 + 9 * 3600000 < now - Number(m[2]) * 60000).length;
+    m = /^parent = "([\w-]+)" AND \(labels is EMPTY OR labels != "pre-mortem"\) AND created < "-(\d+)m"$/.exec(jql);
+    if (m) return scopeChildrenOf(m[1]).filter((r) => (day0 + r.created) * 86400000 + 9 * 3600000 < now - Number(m[2]) * 60000).length;
     m = /^parent = "([\w-]+)" AND statusCategory != Done$/.exec(jql);
     if (m) return childrenOf(m[1]).filter(isOpen).length;
     m = /^parent = "([\w-]+)" AND statusCategory != Done AND assignee is EMPTY$/.exec(jql);

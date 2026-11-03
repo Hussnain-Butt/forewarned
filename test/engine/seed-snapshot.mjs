@@ -46,7 +46,7 @@ export function seedSnapshot({ epic = 'll-chk-e11', today = SEED_TODAY, edit } =
     assignee: personOf(r),
   });
   const counts = (r) => {
-    const kids = childrenOf(r.id);
+    const kids = childrenOf(r.id).filter((k) => !k.labels.includes('pre-mortem'));
     return { childCount: kids.length, childCountAtStart: kids.filter((k) => k.created <= startOf(r)).length };
   };
   const blockedOf = (rs) => rs.filter((r) => r.blockedBy.length)
