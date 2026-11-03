@@ -19,6 +19,8 @@ const LOAD_ERROR = "Forewarned couldn't load the pre-mortem. Try again in a minu
 const START_ERROR = "Forewarned couldn't start the run. Try again in a minute.";
 const NOT_AN_EPIC = 'This panel works on epics only.';
 const wait = (ms) => new Promise((done) => { setTimeout(done, ms); });
+// An agent write-up on the current evidence run; a stale one shows only the "earlier run" message.
+const hasCurrentAgent = (panel) => Boolean(panel?.report?.agent && !panel.report.agent.stale);
 
 const App = () => {
   const [panel, setPanel] = useState(null);
@@ -37,10 +39,12 @@ const App = () => {
     setTab(index);
   };
 
-  // Resolves to the panel data, or null when it couldn't be loaded.
+  // Resolves to the panel data, or null when it couldn't be loaded. A stale agent write-up has no
+  // reasons to show, so the panel opens on the rule-based ones.
   const load = () => invoke('getPanel')
     .then((result) => {
       setPanel(result);
+      if (result?.report?.agent?.stale) selectTab(RULE_TAB);
       return result;
     })
     .catch(() => {
@@ -94,25 +98,25 @@ const App = () => {
     await follow(startedAt);
   };
 
-  // AC 19: a new agent write-up replaces the panel's data. A reader on the Rule-based tab gets a
-  // notice instead of being moved away from what they are reading.
-  const showNewWriteUp = (result, hadTabs) => {
+  // AC 19: a new agent write-up replaces the panel's data. A reader on the Rule-based tab next to a
+  // current agent write-up gets a notice instead of being moved away from what they are reading.
+  const showNewWriteUp = (result, hadCurrentAgent) => {
     setPanel(result);
     setAgentWait(null);
-    if (hadTabs && tabRef.current === RULE_TAB) setAgentReady(true);
+    if (hadCurrentAgent && tabRef.current === RULE_TAB) setAgentReady(true);
     else selectTab(AGENT_TAB);
   };
 
   // AC 19: checks for the agent's write-up every 5 s until 3 minutes after the request, without a
   // reload.
-  const waitForAgent = async (savedBefore, hadTabs, startedAt) => {
+  const waitForAgent = async (savedBefore, hadCurrentAgent, startedAt) => {
     setAgentWait('waiting');
     while (Date.now() - startedAt < AGENT_LIMIT_MS) {
       await wait(AGENT_POLL_MS);
       const result = await invoke('getPanel').catch(() => null);
       const savedAt = result?.report?.agent?.savedAt;
       if (savedAt && savedAt !== savedBefore) {
-        showNewWriteUp(result, hadTabs);
+        showNewWriteUp(result, hadCurrentAgent);
         return;
       }
     }
@@ -123,7 +127,7 @@ const App = () => {
     const savedBefore = panel?.report?.agent?.savedAt ?? null;
     const result = await invoke('getPanel').catch(() => null);
     const savedAt = result?.report?.agent?.savedAt;
-    if (savedAt && savedAt !== savedBefore) showNewWriteUp(result, Boolean(panel?.report?.agent));
+    if (savedAt && savedAt !== savedBefore) showNewWriteUp(result, hasCurrentAgent(panel));
   };
 
   // AC 17: opens Rovo chat with the Forewarned agent and the epic. Opening Rovo remounts this panel,
@@ -132,7 +136,7 @@ const App = () => {
     setAgentReady(false);
     await invoke('requestAgent').catch(() => null);
     rovo.open({ ...AGENT, prompt: `Write the pre-mortem for epic ${panel.issueKey}.` });
-    waitForAgent(panel.report?.agent?.savedAt ?? null, Boolean(panel.report?.agent), Date.now());
+    waitForAgent(panel.report?.agent?.savedAt ?? null, hasCurrentAgent(panel), Date.now());
   };
 
   useEffect(() => {
@@ -140,7 +144,7 @@ const App = () => {
       const request = result?.agentRequest;
       const unchanged = (result?.report?.agent?.savedAt ?? null) === request?.savedBefore;
       if (request && unchanged && Date.now() - Date.parse(request.requestedAt) < AGENT_LIMIT_MS) {
-        waitForAgent(request.savedBefore, Boolean(result.report?.agent), Date.parse(request.requestedAt));
+        waitForAgent(request.savedBefore, hasCurrentAgent(result), Date.parse(request.requestedAt));
       }
     });
     rovo.isEnabled().then(setRovoEnabled).catch(() => setRovoEnabled(false));
