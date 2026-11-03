@@ -13,11 +13,14 @@ export async function getPanelData({ deps, epicKey: requestedKey, accountId }) {
   const epic = await readEpic(deps.port, requestedKey);
   if (!epic) return { error: notVisible(requestedKey) };
   if (!epic.isEpic) return { error: NOT_AN_EPIC };
+  // The three reads don't depend on each other, so they run together (the panel waits on them).
+  const [permissions, agentRequest, stored] = await Promise.all([
+    deps.port.myPermissions(epic.key),
+    accountId ? readAgentRequest(deps.kvs, epic.id, accountId) : null,
+    readPremortem(deps.kvs, epic.id),
+  ]);
   // Only people who can edit the epic may run (story 003 open question 3, story 005 AC 26).
-  const permissions = await deps.port.myPermissions(epic.key);
   const canRun = Boolean(permissions.permissions?.EDIT_ISSUES?.havePermission);
-  const agentRequest = accountId ? await readAgentRequest(deps.kvs, epic.id, accountId) : null;
-  const stored = await readPremortem(deps.kvs, epic.id);
   if (!stored) return { issueKey: epic.key, canRun, report: null, evidence: [], comparison: null, epic: null, agentRequest };
 
   const hidden = await hiddenEvidenceIds(deps.port, stored.pack);

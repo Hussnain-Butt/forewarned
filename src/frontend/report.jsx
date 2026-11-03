@@ -32,7 +32,7 @@ const ReasonCard = ({ number, reason, evidenceById, epicKey }) => {
   const parts = cardParts(reason, evidenceById, epicKey);
   const lozenge = likelihoodLozenge(reason.likelihood);
   const chips = allChips ? parts.chips : parts.chips.slice(0, CHIPS_SHOWN);
-  const hiddenChips = parts.chips.length - chips.length;
+  const extraChips = parts.chips.length - CHIPS_SHOWN;
   return (
     <Box xcss={cardStyle}>
       <Stack space="space.100">
@@ -49,8 +49,11 @@ const ReasonCard = ({ number, reason, evidenceById, epicKey }) => {
                 <LinkButton href={chip.url} target="_blank" spacing="compact">{chip.label}</LinkButton>
               </Tooltip>
             ))}
-            {hiddenChips ? (
-              <Button appearance="subtle" spacing="compact" onClick={() => setAllChips(true)}>{`Show ${hiddenChips} more`}</Button>
+            {/* A toggle, so keyboard focus stays on it once the chips open (AC 29). */}
+            {extraChips > 0 ? (
+              <Button appearance="subtle" spacing="compact" onClick={() => setAllChips(!allChips)}>
+                {allChips ? 'Show fewer' : `Show ${extraChips} more`}
+              </Button>
             ) : null}
           </Inline>
         ) : null}
