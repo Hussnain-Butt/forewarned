@@ -74,8 +74,27 @@ test('asking the agent is remembered for this user, so a remounted panel keeps w
   const deps = { port: portOf(fakeSenders().senders), kvs, now: () => NOW };
   assert.deepEqual(await requestAgentAction({ deps, epicKey: EPIC, accountId: 'acc-1' }), { requested: true });
   const again = await getPanelData({ deps, epicKey: EPIC, accountId: 'acc-1' });
-  assert.deepEqual(again.agentRequest, { savedBefore: null, requestedAt: '2026-11-02T08:00:00.000Z' });
+  assert.deepEqual(again.agentRequest, { savedBefore: null, requestedAt: '2026-11-02T08:00:00.000Z', ageMs: 0 });
   assert.equal((await getPanelData({ deps, epicKey: EPIC, accountId: 'acc-2' })).agentRequest, null);
+});
+
+// The panel measures the 3-minute wait from the server's clock, so a reader whose computer clock
+// is off still resumes waiting after the Rovo remount.
+test("the agent request's age comes from the server clock", async () => {
+  const kvs = fakeKvs();
+  await panelFor({}, { kvs, accountId: 'acc-1' });
+  const port = portOf(fakeSenders().senders);
+  await requestAgentAction({ deps: { port, kvs, now: () => NOW }, epicKey: EPIC, accountId: 'acc-1' });
+  const later = await getPanelData({ deps: { port, kvs, now: () => NOW + 70000 }, epicKey: EPIC, accountId: 'acc-1' });
+  assert.equal(later.agentRequest.ageMs, 70000);
+});
+
+test("a reader who can't see a comparison epic doesn't get it in the comparison set", async () => {
+  const [hiddenEpic] = (await panelFor()).comparison.epics.map((e) => e.key);
+  const panel = await panelFor({ hidden: [hiddenEpic] });
+  assert.ok(!panel.comparison.epics.some((e) => e.key === hiddenEpic));
+  assert.equal(panel.comparison.epics.length, 7);
+  assert.ok(!JSON.stringify(panel).includes(`"${hiddenEpic}"`));
 });
 
 test("asking the agent about an epic the user can't see is refused", async () => {

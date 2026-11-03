@@ -3,6 +3,7 @@
 // whether they asked the agent a moment ago. The epic's summary and due date come from the stored
 // pack, so the headline matches the report below it.
 
+import { readVisible } from '../engine/fetch.js';
 import { notVisible, readEpic } from './epic.js';
 import { readAgentRequest, readPremortem, writeAgentRequest } from './store.js';
 import { hiddenEvidenceIds, packForReader, reportForReader } from './visibility.js';
@@ -23,15 +24,23 @@ export async function getPanelData({ deps, epicKey: requestedKey, accountId }) {
   const canRun = Boolean(permissions.permissions?.EDIT_ISSUES?.havePermission);
   if (!stored) return { issueKey: epic.key, canRun, report: null, evidence: [], comparison: null, epic: null, agentRequest };
 
-  const hidden = await hiddenEvidenceIds(deps.port, stored.pack);
+  // The comparison set lists epics by key and summary, so it is read again as the reader too.
+  const { comparison } = stored.pack;
+  const [hidden, seenEpics] = await Promise.all([
+    hiddenEvidenceIds(deps.port, stored.pack),
+    readVisible(deps.port, (comparison?.epics ?? []).map((e) => e.key), ['summary']),
+  ]);
+  const seen = new Set(seenEpics.map((issue) => issue.key));
   return {
     issueKey: epic.key,
     canRun,
     report: reportForReader(stored.report, hidden),
     evidence: packForReader(stored.pack, hidden).evidence.map(({ id, fact, baseRate, links }) => ({ id, fact, baseRate, links })),
-    comparison: stored.pack.comparison,
+    comparison: comparison && { ...comparison, epics: comparison.epics.filter((e) => seen.has(e.key)) },
     epic: { summary: stored.pack.epic.summary, due: stored.pack.epic.due },
-    agentRequest,
+    // The age comes from the server clock, so the panel's 3-minute wait doesn't depend on the
+    // reader's computer clock.
+    agentRequest: agentRequest && { ...agentRequest, ageMs: deps.now() - Date.parse(agentRequest.requestedAt) },
   };
 }
 

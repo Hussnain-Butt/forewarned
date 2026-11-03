@@ -5,7 +5,9 @@
 
 import { readVisible } from '../engine/fetch.js';
 
-const HIDDEN_NOTE = "Some evidence is hidden because it names work items you can't see.";
+// Jira answers the same for a deleted work item as for one the user can't see, so a deleted one is
+// hidden too (it fails safe); the wording covers both.
+const HIDDEN_NOTE = "Some evidence is hidden because it names work items you can't see or that no longer exist.";
 
 // The IDs of the pack's evidence items the user in session (the port's user) can't fully see. The
 // builder is checked too, because access can be taken away after a run.

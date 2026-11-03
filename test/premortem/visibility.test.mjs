@@ -49,7 +49,7 @@ test('a reader who can\'t see a blocker never sees it, nor the reasons built on 
   assert.ok(hidden.has(openBlocker.id));
   const seen = packForReader(pack, hidden);
   assert.ok(!JSON.stringify(seen.evidence).includes(BLOCKER));
-  assert.equal(seen.notes.at(-1), "Some evidence is hidden because it names work items you can't see.");
+  assert.equal(seen.notes.at(-1), "Some evidence is hidden because it names work items you can't see or that no longer exist.");
   const shown = reportForReader(report, hidden);
   assert.ok(!JSON.stringify(shown).includes(BLOCKER));
   assert.ok(!shown.ruleBased.reasons.some((r) => r.ruleId === 'dependency'));

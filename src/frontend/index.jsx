@@ -12,6 +12,7 @@ const SLOW_AFTER_MS = 60 * 1000;
 const RUN_LIMIT_MS = 5 * 60 * 1000;
 const AGENT_POLL_MS = 5000;
 const AGENT_LIMIT_MS = 3 * 60 * 1000;
+const MAX_MISSED_POLLS = 3;
 const AGENT = { type: 'forge', agentName: 'Forewarned', agentKey: 'forewarned-agent' };
 const AGENT_TAB = 0;
 const RULE_TAB = 1;
@@ -57,14 +58,22 @@ const App = () => {
   const follow = async (startedAt) => {
     if (following.current) return;
     following.current = true;
+    let misses = 0;
     try {
       while (Date.now() - startedAt < RUN_LIMIT_MS) {
         let status;
         try {
           ({ status } = await invoke('getRunStatus'));
+          misses = 0;
         } catch {
-          setRun({ failed: "Forewarned couldn't read the run's progress. Refresh the page to see the latest report." });
-          return;
+          // One failed read (a cold start, a network blip) doesn't stop following the run.
+          misses += 1;
+          if (misses >= MAX_MISSED_POLLS) {
+            setRun({ failed: "Forewarned couldn't read the run's progress. Refresh the page to see the latest report." });
+            return;
+          }
+          await wait(RUN_POLL_MS);
+          continue;
         }
         if (status?.status === 'done') {
           await load();
@@ -128,6 +137,8 @@ const App = () => {
     const result = await invoke('getPanel').catch(() => null);
     const savedAt = result?.report?.agent?.savedAt;
     if (savedAt && savedAt !== savedBefore) showNewWriteUp(result, hasCurrentAgent(panel));
+    // Said in words, so the reader (and a screen reader) knows the check ran (AC 30).
+    else if (result) setAgentWait('checked');
   };
 
   // AC 17: opens Rovo chat with the Forewarned agent and the epic. Opening Rovo remounts this panel,
@@ -141,17 +152,22 @@ const App = () => {
 
   useEffect(() => {
     load().then((result) => {
+      // The request's age comes from the server, so the reader's computer clock doesn't matter.
       const request = result?.agentRequest;
       const unchanged = (result?.report?.agent?.savedAt ?? null) === request?.savedBefore;
-      if (request && unchanged && Date.now() - Date.parse(request.requestedAt) < AGENT_LIMIT_MS) {
-        waitForAgent(request.savedBefore, hasCurrentAgent(result), Date.parse(request.requestedAt));
+      if (request && unchanged && request.ageMs < AGENT_LIMIT_MS) {
+        waitForAgent(request.savedBefore, hasCurrentAgent(result), Date.now() - request.ageMs);
       }
     });
     rovo.isEnabled().then(setRovoEnabled).catch(() => setRovoEnabled(false));
     invoke('getRunStatus').then(({ status }) => {
       if (['queued', 'running'].includes(status?.status)) {
         setRun({ status, slow: false });
-        follow(Date.parse(status.startedAt) || Date.now());
+        // Timed from now: the server's start time against this computer's clock could be off.
+        follow(Date.now());
+      } else if (status?.status === 'failed') {
+        // The latest run failed; a report below is from an earlier run.
+        setRun({ failed: status.error });
       }
     }).catch(() => {});
   }, []);
@@ -193,6 +209,9 @@ const App = () => {
       {agentWait === 'expired' ? (
         <Text color="color.text.subtle">The Forewarned agent hasn&apos;t saved a write-up yet.</Text>
       ) : null}
+      {agentWait === 'checked' ? (
+        <Text color="color.text.subtle">Still no write-up from the Forewarned agent. Check again in a minute.</Text>
+      ) : null}
       {rovoEnabled === false ? (
         <SectionMessage appearance="information">
           <Text>Rovo isn&apos;t turned on for this site, so the agent write-up isn&apos;t available. The rule-based pre-mortem works without it.</Text>
@@ -207,9 +226,10 @@ const App = () => {
           <Text>{run.failed}</Text>
         </SectionMessage>
       ) : null}
+      {/* AC 6: after 5 minutes the error state, with Try again for those who may run. */}
       {run?.timedOut ? (
-        <SectionMessage appearance="warning">
-          <Text>The run is taking longer than 5 minutes. Refresh later to see the result.</Text>
+        <SectionMessage appearance="error" actions={canRun ? <SectionMessageAction onClick={startRun}>Try again</SectionMessageAction> : undefined}>
+          <Text>{`The run is taking longer than 5 minutes. ${canRun ? 'Try again, or refresh' : 'Refresh'} later to see the result.`}</Text>
         </SectionMessage>
       ) : null}
       {running ? <RunSteps status={run.status} slow={run.slow} /> : null}
@@ -217,10 +237,11 @@ const App = () => {
         <Button appearance={report ? 'default' : 'primary'} onClick={startRun} isDisabled={running || !canRun}>
           {report ? 'Re-run' : 'Run pre-mortem'}
         </Button>
-        {rovoEnabled && report ? (
+        {/* The agent's save needs edit permission too, so a viewer isn't left waiting for nothing. */}
+        {rovoEnabled && report && canRun ? (
           <Button appearance="rovo" onClick={openAgent} isDisabled={running || agentWait === 'waiting'}>Write with Forewarned agent</Button>
         ) : null}
-        {agentWait === 'expired' ? <Button onClick={checkAgainForAgent}>Check again</Button> : null}
+        {['expired', 'checked'].includes(agentWait) ? <Button onClick={checkAgainForAgent}>Check again</Button> : null}
       </Inline>
     </Stack>
   );

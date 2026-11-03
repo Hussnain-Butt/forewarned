@@ -21,7 +21,7 @@ resolver.define('getPanel', async ({ context }) => {
   }
   try {
     const port = createJira(forgeSenders(), { deadline: Date.now() + START_BUDGET_MS });
-    return await getPanelData({ deps: { port, kvs }, epicKey: issueKey, accountId: context.accountId });
+    return await getPanelData({ deps: { port, kvs, now: Date.now }, epicKey: issueKey, accountId: context.accountId });
   } catch (error) {
     console.error('getPanel failed:', error instanceof Error ? error.name : 'Unknown error');
     return { error: "Forewarned couldn't load the pre-mortem (Jira didn't respond). Try again in a minute." };

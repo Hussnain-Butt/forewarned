@@ -174,7 +174,7 @@ export const Report = ({ panel, now, tab, onTabChange }) => {
         <SectionMessage appearance="information">{`This report is from ${formatDay(dayOf(report.runAt))}. Re-run to include changes since then.`}</SectionMessage>
       ) : null}
       {report.hiddenForReader ? (
-        <SectionMessage appearance="information">Some reasons are hidden because they name work items you can&apos;t see.</SectionMessage>
+        <SectionMessage appearance="information">Some reasons are hidden because they name work items you can&apos;t see or that no longer exist.</SectionMessage>
       ) : null}
       {report.status === 'insufficient-history' ? <Checks intro={historyLine((comparison?.epics || []).length, space)} checks={report.checks} /> : null}
       {report.status === 'no-signals' ? (
