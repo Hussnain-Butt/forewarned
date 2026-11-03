@@ -72,16 +72,17 @@ const ReasonCard = ({ number, reason, evidenceById, epicKey }) => {
   );
 };
 
-// A ranked list of reasons with its source label (AC 12, 15).
-const ReasonList =({ label, reasons, evidenceById, epicKey }) => (
+// A ranked list of reasons with its source label (AC 12, 15). Without reasons (no signals, every
+// reason hidden or dropped) there is nothing to label; the message above or below says why.
+const ReasonList = ({ label, reasons, evidenceById, epicKey }) => (reasons?.length ? (
   <Stack space="space.150">
     <Text size="small" weight="medium" color="color.text.subtle">{label}</Text>
-    {(reasons || []).map((reason, i) => (
+    {reasons.map((reason, i) => (
       <ReasonCard key={`${i}-${reason.title}`} number={i + 1} reason={reason} evidenceById={evidenceById} epicKey={epicKey} />
     ))}
-    {reasons?.length && reasons.length < MAX_REASONS ? <Text color="color.text.subtle">Not enough evidence for more reasons.</Text> : null}
+    {reasons.length < MAX_REASONS ? <Text color="color.text.subtle">Not enough evidence for more reasons.</Text> : null}
   </Stack>
-);
+) : null);
 
 // What Forewarned checked, for the insufficient-history and no-signals states (AC 22–23).
 const Checks = ({ intro, checks }) => (
