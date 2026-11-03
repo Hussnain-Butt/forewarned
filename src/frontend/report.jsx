@@ -3,7 +3,6 @@ import {
   Box, Button, Heading, Inline, Link, LinkButton, List, ListItem, Lozenge, SectionMessage, Stack, Tab, TabList, TabPanel, Tabs,
   Text, Tooltip, User, xcss,
 } from '@forge/react';
-import { dayOf, formatDay } from '../engine/format.js';
 import {
   cardParts, checkLines, comparisonParts, droppedLine, exactTime, headline, historyLine, isOld, likelihoodLozenge,
   relativeTime, sortByLikelihood,
@@ -100,7 +99,7 @@ const Checks = ({ intro, checks }) => (
   </SectionMessage>
 );
 
-// The comparison set, expandable (AC 13). Not shown without epics: the history line says so.
+// The comparison set, expandable (AC 13). Not shown without epics: the slip check says so.
 const ComparisonSet = ({ comparison, space }) => {
   const [open, setOpen] = useState(false);
   const parts = comparisonParts(comparison, space);
@@ -164,19 +163,21 @@ export const Report = ({ panel, now, tab, onTabChange }) => {
   const space = spaceOf(issueKey);
   const evidenceById = new Map((panel.evidence || []).map((item) => [item.id, item]));
   const head = headline({ summary: epic.summary, due: epic.due, today: new Date(now) });
+  const ruleBased = <ReasonList label="From your Jira history (rule-based, no AI)" reasons={report.ruleBased?.reasons} evidenceById={evidenceById} epicKey={issueKey} />;
   return (
     <Stack space="space.200">
       <Stack space="space.050">
         <Heading size="medium">{head.text}</Heading>
         {head.note ? <Text size="small" color="color.text.subtle">{head.note}</Text> : null}
       </Stack>
+      {/* The reader's local time, like the run info below. */}
       {isOld(report.runAt, now) ? (
-        <SectionMessage appearance="information">{`This report is from ${formatDay(dayOf(report.runAt))}. Re-run to include changes since then.`}</SectionMessage>
+        <SectionMessage appearance="information">{`This report is from ${exactTime(report.runAt)}. Re-run to include changes since then.`}</SectionMessage>
       ) : null}
       {report.hiddenForReader ? (
         <SectionMessage appearance="information">Some reasons are hidden because they name work items you can&apos;t see or that no longer exist.</SectionMessage>
       ) : null}
-      {report.status === 'insufficient-history' ? <Checks intro={historyLine((comparison?.epics || []).length, space)} checks={report.checks} /> : null}
+      {report.status === 'insufficient-history' ? <Checks intro={historyLine(space)} checks={report.checks} /> : null}
       {report.status === 'no-signals' ? (
         <Checks intro="No strong risk signals found in this history. Here is what Forewarned checked." checks={report.checks} />
       ) : null}
@@ -189,13 +190,9 @@ export const Report = ({ panel, now, tab, onTabChange }) => {
           <TabPanel>
             <AgentWriteUp agent={report.agent} evidenceById={evidenceById} epicKey={issueKey} />
           </TabPanel>
-          <TabPanel>
-            <ReasonList label="From your Jira history (rule-based, no AI)" reasons={report.ruleBased?.reasons} evidenceById={evidenceById} epicKey={issueKey} />
-          </TabPanel>
+          <TabPanel>{ruleBased}</TabPanel>
         </Tabs>
-      ) : (
-        <ReasonList label="From your Jira history (rule-based, no AI)" reasons={report.ruleBased?.reasons} evidenceById={evidenceById} epicKey={issueKey} />
-      )}
+      ) : ruleBased}
       {comparison?.epics?.length ? <ComparisonSet comparison={comparison} space={space} /> : null}
       <RunInfo report={report} now={now} />
     </Stack>

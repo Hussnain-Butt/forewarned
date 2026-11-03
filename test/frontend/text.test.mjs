@@ -115,10 +115,10 @@ test('comparisonParts', () => {
   assert.deepEqual(parts.rows[0], { key: 'CHK-7', label: 'CHK-7 Wallet top-up', url: 'u7', detail: parts.rows[0].detail });
 });
 
+// The count stays in the slip check's own note ("Only 1 finished epic found in PLAT…"), read from
+// the stored pack, so the intro neither repeats it nor shows a different, reader-filtered number.
 test('historyLine and checkLines', () => {
-  assert.equal(historyLine(0, 'PLAT'), 'No finished epics found in PLAT in the last 12 months. Forewarned needs 3 for slip patterns. Here is what it could still check:');
-  assert.equal(historyLine(1, 'PLAT'), 'Only 1 finished epic found in PLAT in the last 12 months. Forewarned needs 3 for slip patterns. Here is what it could still check:');
-  assert.equal(historyLine(2, 'CHK'), 'Only 2 finished epics found in CHK in the last 12 months. Forewarned needs 3 for slip patterns. Here is what it could still check:');
+  assert.equal(historyLine('PLAT'), 'Not enough history in PLAT for slip patterns. Here is what Forewarned could still check:');
   const checks = { slip: { status: 'insufficient', note: 'n1' }, scope: { status: 'found', note: '' }, load: { status: 'found', note: 'n3' }, dependencies: { status: 'clear', note: 'No open blockers.' } };
   assert.deepEqual(checkLines(checks), [
     { label: 'Slip history', status: 'Not enough data', note: 'n1' }, { label: 'Scope growth', status: 'Found', note: '' },

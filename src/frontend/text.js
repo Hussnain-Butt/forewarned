@@ -102,11 +102,8 @@ export function comparisonParts(comparison, space) {
   };
 }
 
-// AC 22: the insufficient-history message.
-export function historyLine(count, space) {
-  const found = count ? `Only ${counted(count, 'finished epic')}` : 'No finished epics';
-  return `${found} found in ${space} in the last 12 months. Forewarned needs 3 for slip patterns. Here is what it could still check:`;
-}
+// AC 22: the insufficient-history message. The count is in the slip check's note just below.
+export const historyLine = (space) => `Not enough history in ${space} for slip patterns. Here is what Forewarned could still check:`;
 
 // AC 22–23: each check, in a fixed order.
 export function checkLines(checks) {

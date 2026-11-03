@@ -3,6 +3,7 @@
 // epic they can edit (everyone who can see the epic reads its pre-mortem), and queues one event per
 // epic at a time.
 
+import { notAnEpic, notVisible, readEpic } from './epic.js';
 import { readRunStatus, writeRunStatus } from './store.js';
 
 const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
@@ -19,15 +20,10 @@ export const isRunInProgress = (status, now) => Boolean(status && ['queued', 'ru
 export async function startRun({ port, kvs, queue, epicKey: requestedKey, accountId, now, newId }) {
   if (!ISSUE_KEY.test(requestedKey ?? '')) return { error: 'No valid epic key was given.' };
   if (!accountId) return { error: "Forewarned couldn't tell who is asking, so it can't start a run." };
-  let issue;
-  try {
-    issue = await port.issue(requestedKey, ['issuetype']);
-  } catch (error) {
-    if (error.status === 404) return { error: `${requestedKey} doesn't exist, or you don't have permission to see it.` };
-    throw error;
-  }
-  const { key: epicKey, id: epicId } = issue;
-  if (issue.fields.issuetype?.hierarchyLevel !== 1) return { error: `${epicKey} is not an epic. Forewarned runs pre-mortems on epics only.` };
+  const epic = await readEpic(port, requestedKey);
+  if (!epic) return { error: notVisible(requestedKey) };
+  const { key: epicKey, id: epicId } = epic;
+  if (!epic.isEpic) return { error: notAnEpic(epicKey) };
   const permissions = await port.myPermissions(epicKey);
   if (!permissions.permissions?.EDIT_ISSUES?.havePermission) {
     return { error: `You can view ${epicKey} but can't edit it, so Forewarned can't save a pre-mortem on it.` };

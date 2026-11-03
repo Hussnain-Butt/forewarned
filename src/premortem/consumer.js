@@ -56,11 +56,13 @@ export async function handleRun({ event, principal, senders, kvs: store, now = D
     return;
   }
   // One KVS write per step: a step the status already shows is not written again. "past epics"
-  // carries how many epics are read (story 005 AC 5).
+  // carries how many epics are read, and later steps keep it (story 005 AC 5).
   let shownStep = null;
-  const showStep = (step, { count = null } = {}) => {
+  let count = null;
+  const showStep = (step, extra = {}) => {
     if (step === shownStep) return undefined;
     shownStep = step;
+    count = extra.count ?? count;
     return setStatus({ status: 'running', step, count });
   };
 

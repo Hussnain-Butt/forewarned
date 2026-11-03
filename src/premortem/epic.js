@@ -14,5 +14,7 @@ export async function readEpic(port, epicKey) {
   }
 }
 
+// The panel's answer on a work item that isn't an epic; the panel's frontend imports it too.
+export const EPICS_ONLY = 'This panel works on epics only.';
 export const notVisible = (epicKey) => `${epicKey} doesn't exist, or you don't have permission to see it.`;
 export const notAnEpic = (epicKey) => `${epicKey} is not an epic. Forewarned runs pre-mortems on epics only.`;

@@ -3,6 +3,7 @@ import ForgeReconciler, { Button, Inline, SectionMessage, SectionMessageAction, 
 import { invoke, rovo } from '@forge/bridge';
 import { Report } from './report.jsx';
 import { RunSteps } from './running.jsx';
+import { EPICS_ONLY } from '../premortem/epic.js';
 
 // The Forewarned epic panel (story 005): run the pre-mortem, follow its steps, read the report, and
 // ask the Forewarned agent in Rovo for its write-up.
@@ -18,7 +19,6 @@ const AGENT_TAB = 0;
 const RULE_TAB = 1;
 const LOAD_ERROR = "Forewarned couldn't load the pre-mortem. Try again in a minute.";
 const START_ERROR = "Forewarned couldn't start the run. Try again in a minute.";
-const NOT_AN_EPIC = 'This panel works on epics only.';
 const wait = (ms) => new Promise((done) => { setTimeout(done, ms); });
 // An agent write-up on the current evidence run; a stale one shows only the "earlier run" message.
 const hasCurrentAgent = (panel) => Boolean(panel?.report?.agent && !panel.report.agent.stale);
@@ -28,9 +28,9 @@ const App = () => {
   // { status, slow } while a run goes, { failed } or { timedOut } when it ended badly, else null.
   const [run, setRun] = useState(null);
   const following = useRef(false);
-  const lastCount = useRef(null);
   const [rovoEnabled, setRovoEnabled] = useState(null);
-  // 'waiting' while the panel checks for the agent's write-up, 'expired' after 3 minutes.
+  // 'waiting' while the panel checks for the agent's write-up, 'expired' after 3 minutes, 'checked'
+  // after a Check again that found nothing new.
   const [agentWait, setAgentWait] = useState(null);
   const [agentReady, setAgentReady] = useState(false);
   const [tab, setTab] = useState(AGENT_TAB);
@@ -84,8 +84,7 @@ const App = () => {
           setRun({ failed: status.error });
           return;
         }
-        if (Number.isInteger(status?.count)) lastCount.current = status.count;
-        setRun({ status: { ...status, count: status?.count ?? lastCount.current }, slow: Date.now() - startedAt > SLOW_AFTER_MS });
+        setRun({ status, slow: Date.now() - startedAt > SLOW_AFTER_MS });
         await wait(RUN_POLL_MS);
       }
       setRun({ timedOut: true });
@@ -97,7 +96,6 @@ const App = () => {
   // AC 5: the running state shows at once; the start function checks the epic and the permission.
   const startRun = async () => {
     const startedAt = Date.now();
-    lastCount.current = null;
     setRun({ status: { status: 'queued' }, slow: false });
     const started = await invoke('startRun').catch(() => ({ error: START_ERROR }));
     if (started.error) {
@@ -176,8 +174,8 @@ const App = () => {
   if (panel.error) {
     return (
       <SectionMessage
-        appearance={panel.error === NOT_AN_EPIC ? 'information' : 'error'}
-        actions={panel.error === NOT_AN_EPIC ? undefined : <SectionMessageAction onClick={load}>Try again</SectionMessageAction>}
+        appearance={panel.error === EPICS_ONLY ? 'information' : 'error'}
+        actions={panel.error === EPICS_ONLY ? undefined : <SectionMessageAction onClick={load}>Try again</SectionMessageAction>}
       >
         <Text>{panel.error}</Text>
       </SectionMessage>
@@ -186,6 +184,9 @@ const App = () => {
 
   const running = Boolean(run?.status);
   const { report, canRun } = panel;
+  // AC 6 and 28: a failed run, or one still going after 5 minutes, is an error with Try again.
+  const timedOut = `The run is taking longer than 5 minutes. ${canRun ? 'Try again, or refresh' : 'Refresh'} later to see the result.`;
+  const runError = run?.failed ?? (run?.timedOut ? timedOut : null);
   return (
     <Stack space="space.200">
       {!report && !running ? (
@@ -221,15 +222,9 @@ const App = () => {
         <Text color="color.text.subtle">You need permission to edit this epic to run a pre-mortem. Ask a space admin.</Text>
       )}
       {/* The run's progress and outcome sit next to the button that started it. */}
-      {run?.failed ? (
+      {runError ? (
         <SectionMessage appearance="error" actions={canRun ? <SectionMessageAction onClick={startRun}>Try again</SectionMessageAction> : undefined}>
-          <Text>{run.failed}</Text>
-        </SectionMessage>
-      ) : null}
-      {/* AC 6: after 5 minutes the error state, with Try again for those who may run. */}
-      {run?.timedOut ? (
-        <SectionMessage appearance="error" actions={canRun ? <SectionMessageAction onClick={startRun}>Try again</SectionMessageAction> : undefined}>
-          <Text>{`The run is taking longer than 5 minutes. ${canRun ? 'Try again, or refresh' : 'Refresh'} later to see the result.`}</Text>
+          <Text>{runError}</Text>
         </SectionMessage>
       ) : null}
       {running ? <RunSteps status={run.status} slow={run.slow} /> : null}

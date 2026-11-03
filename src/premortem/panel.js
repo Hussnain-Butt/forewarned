@@ -4,16 +4,14 @@
 // pack, so the headline matches the report below it.
 
 import { readVisible } from '../engine/fetch.js';
-import { notVisible, readEpic } from './epic.js';
+import { EPICS_ONLY, notVisible, readEpic } from './epic.js';
 import { readAgentRequest, readPremortem, writeAgentRequest } from './store.js';
 import { hiddenEvidenceIds, packForReader, reportForReader } from './visibility.js';
-
-const NOT_AN_EPIC = 'This panel works on epics only.';
 
 export async function getPanelData({ deps, epicKey: requestedKey, accountId }) {
   const epic = await readEpic(deps.port, requestedKey);
   if (!epic) return { error: notVisible(requestedKey) };
-  if (!epic.isEpic) return { error: NOT_AN_EPIC };
+  if (!epic.isEpic) return { error: EPICS_ONLY };
   // The three reads don't depend on each other, so they run together (the panel waits on them).
   const [permissions, agentRequest, stored] = await Promise.all([
     deps.port.myPermissions(epic.key),
@@ -50,7 +48,7 @@ export async function getPanelData({ deps, epicKey: requestedKey, accountId }) {
 export async function requestAgentAction({ deps, epicKey: requestedKey, accountId }) {
   const epic = await readEpic(deps.port, requestedKey);
   if (!epic) return { error: notVisible(requestedKey) };
-  if (!epic.isEpic) return { error: NOT_AN_EPIC };
+  if (!epic.isEpic) return { error: EPICS_ONLY };
   const stored = await readPremortem(deps.kvs, epic.id);
   const savedBefore = stored?.report?.agent?.savedAt ?? null;
   await writeAgentRequest(deps.kvs, epic.id, accountId, { savedBefore, requestedAt: new Date(deps.now()).toISOString() });
