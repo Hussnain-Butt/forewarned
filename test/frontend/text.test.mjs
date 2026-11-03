@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  cardParts, checkLines, comparisonParts, droppedLine, exactTime, headline, historyLine, isOld,
-  likelihoodLozenge, relativeTime, sortByLikelihood, stepLines,
+  cardParts, checkLines, comparisonParts, createLabel, droppedLine, exactTime, headline, historyLine, isOld,
+  likelihoodLozenge, relativeTime, sortByLikelihood, stepLines, taskResultParts,
 } from '../../src/frontend/text.js';
 
 const TODAY = new Date('2026-11-02T08:00:00Z');
@@ -135,4 +135,50 @@ test('relativeTime, exactTime and isOld', () => {
   assert.equal(exactTime('2026-11-02T12:26:10Z', 'UTC'), '2 Nov 2026, 12:26');
   assert.equal(isOld('2026-11-01T11:59:00Z', now), true);
   assert.equal(isOld('2026-11-01T12:01:00Z', now), false);
+});
+
+// Story 006 AC 2: the button's live count.
+test('createLabel', () => {
+  assert.equal(createLabel(0), 'Create tasks');
+  assert.equal(createLabel(1), 'Create 1 task');
+  assert.equal(createLabel(3), 'Create 3 tasks');
+});
+
+// Story 006 AC 8, 12–13: one result per task, in words (never colour alone).
+const made = (n, extra = {}) => ({ fingerprint: `f${n}`, title: `Reason ${n}`, key: `CHK-${900 + n}`, url: `u${n}`, asChild: true, ...extra });
+const failed = (n, error) => ({ fingerprint: `f${n}`, title: `Reason ${n}`, error });
+
+test('taskResultParts when every task was created', () => {
+  const all = taskResultParts([made(1), made(2), made(3)]);
+  assert.equal(all.appearance, 'success');
+  assert.equal(all.line, 'Created 3 tasks: ');
+  assert.deepEqual(all.created, [{ key: 'CHK-901', url: 'u1' }, { key: 'CHK-902', url: 'u2' }, { key: 'CHK-903', url: 'u3' }]);
+  assert.deepEqual([all.notes, all.failures], [[], []]);
+  assert.equal(taskResultParts([made(1)]).line, 'Created 1 task: ');
+  assert.equal(taskResultParts([made(1, { existed: true }), made(2)]).line, 'Created 2 tasks: ', 'an existing task counts as created');
+});
+
+test('taskResultParts when some failed', () => {
+  const some = taskResultParts([made(1), failed(2, 'Jira is busy right now. Try again in a minute.'), made(3)]);
+  assert.equal(some.appearance, 'warning');
+  assert.equal(some.line, 'Created 2 of 3 tasks: ');
+  assert.deepEqual(some.created.map((c) => c.key), ['CHK-901', 'CHK-903']);
+  assert.deepEqual(some.failures, [{ title: 'Reason 2', error: 'Jira is busy right now. Try again in a minute.' }]);
+});
+
+test('taskResultParts when nothing was created', () => {
+  const none = taskResultParts([failed(1, 'e1'), failed(2, 'e2')]);
+  assert.equal(none.appearance, 'error');
+  assert.equal(none.line, "Forewarned couldn't create the tasks.");
+  assert.deepEqual(none.created, []);
+  assert.equal(none.failures.length, 2);
+  assert.equal(taskResultParts([failed(1, 'e1')]).line, "Forewarned couldn't create the task.");
+});
+
+test('taskResultParts says when a task is not under the epic', () => {
+  const parts = taskResultParts([made(1, { asChild: false, linked: true }), made(2, { asChild: false, linked: false }), made(3, { asChild: false, existed: true })]);
+  assert.deepEqual(parts.notes, [
+    "CHK-901 couldn't go under the epic, so it is linked to it with 'relates to'.",
+    "CHK-902 couldn't go under the epic or be linked to it. Link it to the epic in Jira.",
+  ]);
 });
