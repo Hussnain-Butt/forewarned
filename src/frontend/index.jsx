@@ -4,6 +4,7 @@ import { invoke, rovo, view } from '@forge/bridge';
 import { Report } from './report.jsx';
 import { RunSteps } from './running.jsx';
 import { TaskBar } from './tasks.jsx';
+import { inReasonOrder, sortByLikelihood } from './text.js';
 import { EPICS_ONLY } from '../premortem/epic.js';
 
 // The Forewarned epic panel (story 005): run the pre-mortem, follow its steps, read the report, ask
@@ -27,8 +28,9 @@ const hasCurrentAgent = (panel) => Boolean(panel?.report?.agent && !panel.report
 // Which report the ticks were made on: a re-run or a new agent write-up changes it (story 006).
 const reportStamp = (panel) => `${panel?.report?.runAt ?? ''}|${panel?.report?.agent?.savedAt ?? ''}`;
 const NONE = new Set();
-// The reasons the reader can tick: the rule-based ones and a current agent write-up's.
-const reasonsOf = (panel) => [...(panel?.report?.ruleBased?.reasons ?? []), ...(hasCurrentAgent(panel) ? panel.report.agent.reasons : [])];
+// The reasons the reader can tick, in the order the tabs show them: the rule-based ones and a
+// current agent write-up's.
+const reasonsOf = (panel) => [...(panel?.report?.ruleBased?.reasons ?? []), ...(hasCurrentAgent(panel) ? sortByLikelihood(panel.report.agent.reasons) : [])];
 
 const App = () => {
   const [panel, setPanel] = useState(null);
@@ -252,7 +254,7 @@ const App = () => {
       canCreate={panel.canCreate}
       space={panel.space}
       creating={creating}
-      onCreate={() => createTasks([...chosen])}
+      onCreate={() => createTasks(inReasonOrder(reasonsOf(panel), chosen))}
       notice={selectionCleared}
       outcome={taskOutcome}
       refreshFailed={refreshFailed}

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  cardParts, checkLines, comparisonParts, createLabel, droppedLine, exactTime, headline, historyLine, isOld,
+  cardParts, checkLines, comparisonParts, createLabel, droppedLine, exactTime, headline, historyLine, inReasonOrder, isOld,
   likelihoodLozenge, relativeTime, sortByLikelihood, stepLines, taskResultParts,
 } from '../../src/frontend/text.js';
 
@@ -181,4 +181,12 @@ test('taskResultParts says when a task is not under the epic', () => {
     "CHK-901 couldn't go under the epic, so it is linked to it with 'relates to'.",
     "CHK-902 couldn't go under the epic or be linked to it. Link it to the epic in Jira.",
   ]);
+});
+
+// The tasks are created, and their keys numbered, in the order of the reasons, not of the ticks.
+test('inReasonOrder', () => {
+  const reasons = ['a', 'b', 'c', 'd'].map((fingerprint) => ({ fingerprint }));
+  assert.deepEqual(inReasonOrder(reasons, new Set(['d', 'b', 'a'])), ['a', 'b', 'd']);
+  assert.deepEqual(inReasonOrder(reasons, new Set(['x', 'c'])), ['c'], 'a tick on a reason no longer shown is dropped');
+  assert.deepEqual(inReasonOrder(reasons, new Set()), []);
 });

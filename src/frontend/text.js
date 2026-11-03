@@ -136,6 +136,9 @@ export function exactTime(iso, timeZone) {
 // AC 27: a report more than 24 hours old.
 export const isOld = (iso, now) => now - Date.parse(iso) > DAY_MS;
 
+// Story 006: the ticked reasons in the order the panel shows them, so the new keys follow that order.
+export const inReasonOrder = (reasons, selected) => reasons.map((reason) => reason.fingerprint).filter((fp) => selected.has(fp));
+
 // Story 006 AC 2: the button's live count.
 export const createLabel = (count) => (count ? `Create ${counted(count, 'task')}` : 'Create tasks');
 
