@@ -122,13 +122,15 @@ permissions:
   # The queue consumer reads Jira as the user who started the run, through offline user
   # impersonation (story 003; story 002 open question 1). It writes only to Forge KVS (storage:app),
   # so writing to Jira needs no impersonation; write:jira-work is for the mitigation work items
-  # (story 006) and the Confluence scopes for the pre-mortem page (story 007).
+  # (story 006) and the Confluence scopes for the pre-mortem page (story 007): spaces and their
+  # create permission, the page's version and title check, and creating or updating it.
   scopes:
     read:jira-work:
       allowImpersonation: true
     write:jira-work: {}
     storage:app: {}
     read:space:confluence: {}
+    read:page:confluence: {}
     write:page:confluence: {}
 app:
   runtime:

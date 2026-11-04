@@ -5,10 +5,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { runPremortemAction } from '../../src/premortem/actions.js';
 import { handleRun } from '../../src/premortem/consumer.js';
+import { writePageAction } from '../../src/premortem/confluence.js';
 import { getPanelData, requestAgentAction } from '../../src/premortem/panel.js';
 import { createTasksAction } from '../../src/premortem/tasks.js';
 import { keyOf } from '../engine/seed-snapshot.mjs';
-import { fakeKvs, fakeQueue, fakeSenders, idOf, portOf } from './fakes.mjs';
+import { fakeConfluence, fakeKvs, fakeQueue, fakeSenders, idOf, portOf, storedOf } from './fakes.mjs';
 
 const EPIC = keyOf('ll-chk-e11');
 const EPIC_ID = await idOf(EPIC);
@@ -54,6 +55,7 @@ test('before any run the panel gets no report', async () => {
   const panel = await panelFor({}, { withRun: false });
   assert.deepEqual(panel, {
     issueKey: EPIC, canRun: true, canCreate: true, space: 'CHK', report: null, evidence: [], comparison: null, epic: null, agentRequest: null, tasks: {}, taskResults: null,
+    confluence: { available: true, page: null },
   });
 });
 
@@ -157,4 +159,27 @@ test('the last results come back to their creator for 5 minutes', async () => {
   assert.deepEqual((await read('acc-1', NOW + 60000)).taskResults.map((r) => r.key), ['CHK-901', 'CHK-902']);
   assert.equal((await read('acc-2', NOW + 60000)).taskResults, null);
   assert.equal((await read('acc-1', NOW + 301000)).taskResults, null);
+});
+
+// Story 007: whether the Confluence button can show, and the epic's page once there is one.
+test('the panel says whether Confluence is available', async () => {
+  const kvs = fakeKvs();
+  await panelFor({}, { kvs });
+  const read = (installed) => getPanelData({ deps: { port: portOf(fakeSenders().senders), kvs, now: () => NOW, installed }, epicKey: EPIC, accountId: 'acc-1' });
+  assert.deepEqual((await read(false)).confluence, { available: false, page: null });
+  assert.deepEqual((await read(null)).confluence, { available: true, page: null });
+  assert.deepEqual((await read(true)).confluence, { available: true, page: null });
+});
+
+test('the stored page comes back with the panel', async () => {
+  const kvs = fakeKvs();
+  await panelFor({}, { kvs });
+  const confluence = fakeConfluence();
+  const deps = { port: portOf(fakeSenders().senders), confluence: portOf(confluence.senders), kvs, now: () => NOW, installed: true };
+  await writePageAction({ deps, epicKey: EPIC, accountId: 'acc-1', spaceId: '102' });
+  const panel = await getPanelData({ deps, epicKey: EPIC, accountId: 'acc-2' });
+  assert.deepEqual(panel.confluence, {
+    available: true,
+    page: { url: 'https://seed.example/wiki/spaces/ALPHA/pages/7001', title: `Pre-mortem: ${storedOf(kvs, EPIC_ID).pack.epic.summary} (${EPIC})`, spaceId: '102', spaceName: 'Alpha' },
+  });
 });
