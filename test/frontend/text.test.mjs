@@ -210,8 +210,10 @@ test('the Confluence page labels', () => {
   assert.equal(pageButtonLabel(true), 'Update Confluence page');
   assert.equal(pageConfirmLabel(false), 'Create page');
   assert.equal(pageConfirmLabel(true), 'Update page');
-  assert.equal(pageWritingLine(false), 'Creating the Confluence page…');
-  assert.equal(pageWritingLine(true), 'Updating the Confluence page…');
+  // While writing, the picker gives way to this line, so it names the space (axe QA 007: a disabled
+  // picker's text fails contrast).
+  assert.equal(pageWritingLine(false, 'Employee Onboarding'), 'Creating the Confluence page in Employee Onboarding…');
+  assert.equal(pageWritingLine(true, 'Employee Onboarding'), 'Updating the Confluence page in Employee Onboarding…');
 });
 
 test('pageResultParts', () => {

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Button, Inline, Label, Link, LoadingButton, SectionMessage, SectionMessageAction, Select, Spinner, Stack, Text } from '@forge/react';
+import { Button, Inline, Label, Link, SectionMessage, SectionMessageAction, Select, Spinner, Stack, Text } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { CONFLUENCE_UNAVAILABLE, pageButtonLabel, pageConfirmLabel, pageResultParts, pageWritingLine } from './text.js';
 
@@ -83,7 +83,7 @@ export const ConfluencePage = ({ confluence }) => {
   const parts = result && pageResultParts(result);
   const options = spaces.map((space) => ({ label: space.name, value: space.id }));
   const updating = Boolean(page) && choice === page.spaceId;
-  const busy = mode === 'writing';
+  const chosen = spaces.find((space) => space.id === choice);
   return (
     <Stack space="space.100">
       {parts ? (
@@ -114,7 +114,7 @@ export const ConfluencePage = ({ confluence }) => {
           <Text>Loading Confluence spaces…</Text>
         </Inline>
       ) : null}
-      {(mode === 'choosing' || busy) && !spaces.length ? (
+      {mode === 'choosing' && !spaces.length ? (
         <Stack space="space.100">
           <Text>{"You can't create pages in any space. Ask a Confluence admin."}</Text>
           <Inline>
@@ -122,7 +122,7 @@ export const ConfluencePage = ({ confluence }) => {
           </Inline>
         </Stack>
       ) : null}
-      {(mode === 'choosing' || busy) && spaces.length ? (
+      {mode === 'choosing' && spaces.length ? (
         <Stack space="space.100">
           <Stack space="space.050">
             <Label labelFor={SELECT_ID}>Confluence space</Label>
@@ -132,19 +132,21 @@ export const ConfluencePage = ({ confluence }) => {
               options={options}
               value={options.find((option) => option.value === choice) ?? null}
               placeholder="Choose a space"
-              isDisabled={busy}
               onChange={(option) => setChoice(option?.value ?? null)}
             />
           </Stack>
           <Inline space="space.100">
-            <LoadingButton appearance="primary" isLoading={busy} isDisabled={busy || !choice} onClick={writePage}>
-              {pageConfirmLabel(updating)}
-            </LoadingButton>
-            <Button appearance="subtle" isDisabled={busy} onClick={cancel}>Cancel</Button>
+            <Button appearance="primary" isDisabled={!choice} onClick={writePage}>{pageConfirmLabel(updating)}</Button>
+            <Button appearance="subtle" onClick={cancel}>Cancel</Button>
           </Inline>
-          {/* Said in words too, so a screen reader hears that the page is being written. */}
-          {busy ? <Text color="color.text.subtle">{pageWritingLine(updating)}</Text> : null}
         </Stack>
+      ) : null}
+      {/* While the page is written the picker gives way to progress in words, which names the space. */}
+      {mode === 'writing' ? (
+        <Inline space="space.100" alignBlock="center">
+          <Spinner size="small" label="Writing the Confluence page" />
+          <Text>{pageWritingLine(updating, chosen?.name ?? 'Confluence')}</Text>
+        </Inline>
       ) : null}
     </Stack>
   );

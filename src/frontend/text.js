@@ -179,8 +179,9 @@ export function taskResultParts(results) {
 export const pageButtonLabel = (hasPage) => (hasPage ? 'Update Confluence page' : 'Create Confluence page');
 export const pageConfirmLabel = (updating) => (updating ? 'Update page' : 'Create page');
 
-// The progress line under the confirm button while the page is written (story 005 AC 30).
-export const pageWritingLine = (updating) => (updating ? 'Updating the Confluence page…' : 'Creating the Confluence page…');
+// The progress line that takes the picker's place while the page is written (story 005 AC 30); it
+// names the space, since the picker is gone (a disabled picker's text failed axe's contrast check).
+export const pageWritingLine = (updating, space) => `${updating ? 'Updating' : 'Creating'} the Confluence page in ${space}…`;
 
 // AC 12–13: what happened, in words; `note` says when the title got the date.
 export const pageResultParts = ({ updated, dated, page }) => ({
