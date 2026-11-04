@@ -3,6 +3,7 @@
 
 import { dayOf, formatDay } from '../engine/format.js';
 import { cardParts } from '../frontend/text.js';
+import { linkTo, paragraph, text } from './adf.js';
 import { cut } from './validator.js';
 
 const SUMMARY_CHARS = 255;
@@ -31,13 +32,9 @@ export function taskSummary(mitigation) {
   return cut(plain, SUMMARY_CHARS);
 }
 
-// ADF building blocks. Jira rejects empty text nodes, so callers pass only non-empty text.
-const text = (value, marks) => ({ type: 'text', text: value, ...(marks ? { marks } : {}) });
-const paragraph = (...content) => ({ type: 'paragraph', content });
-const linkTo = (url) => [{ type: 'link', attrs: { href: url } }];
-
-// One evidence line: "E2: ‹fact› (PLT-31, CHK-7)", each key a link to its work item.
-function evidenceItem(item, epicKey) {
+// One evidence line: "E2: ‹fact› (PLT-31, CHK-7)", each key a link to its work item. The Confluence
+// page (story 007) lists its evidence the same way.
+export function evidenceItem(item, epicKey) {
   const links = (item.links || []).filter((link, i, all) => link.key !== epicKey && all.findIndex((other) => other.key === link.key) === i);
   const content = [text(`${item.id}: ${item.fact}`)];
   if (links.length) {
