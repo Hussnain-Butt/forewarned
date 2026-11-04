@@ -185,6 +185,10 @@ test('the tables give their long text the wide columns', () => {
   }
   assert.ok(widths[0][1] >= 2 * widths[0][2], 'Reason is much wider than Likelihood');
   assert.ok(widths[1][1] >= 2 * widths[1][2], 'Action is much wider than Task');
+  // Seen on the site at 80 / 90 / 110 px: "Likeliho-od", "No task / yet" and "No due / date" broke.
+  assert.ok(widths[0][2] >= 96, '"Likelihood" fits on one line');
+  assert.ok(widths[1][2] >= 100, '"No task yet" fits on one line');
+  assert.ok(widths[1][4] >= 120, '"No due date" fits on one line');
   for (const t of tables) {
     for (const row of t.content) row.content.forEach((cell, i) => assert.deepEqual(cell.attrs.colwidth, t.content[0].content[i].attrs.colwidth));
   }

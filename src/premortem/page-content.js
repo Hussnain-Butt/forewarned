@@ -13,8 +13,8 @@ import { cut } from './validator.js';
 const TITLE_CHARS = 255;
 // Column widths in pixels, within Confluence's default page width of 760, so the reason and the
 // action get room and short values (#, likelihood, key) don't take a sixth of the table each.
-const WRONG_WIDTHS = [40, 220, 80, 140, 120, 160];
-const PLAN_WIDTHS = [40, 280, 90, 130, 110, 110];
+const WRONG_WIDTHS = [40, 210, 96, 134, 120, 160];
+const PLAN_WIDTHS = [40, 260, 100, 130, 120, 110];
 const day = (iso) => formatDay(dayOf(iso));
 
 // AC 1: the page says where its reasons come from, in the panel's own words.
