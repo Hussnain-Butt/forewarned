@@ -174,6 +174,22 @@ test('how it was made', () => {
   assert.ok(!hrefs(made).includes(url(EPIC)), 'the epic itself is not repeated as evidence');
 });
 
+// Polish (QA 007): equal columns left the Reason column so narrow that each row ran very tall.
+test('the tables give their long text the wide columns', () => {
+  const tables = nodes(pageDoc(input())).filter((n) => n.type === 'table');
+  assert.equal(tables.length, 2);
+  const widths = tables.map((t) => t.content[0].content.map((cell) => cell.attrs.colwidth?.[0]));
+  for (const row of widths) {
+    assert.ok(row.every(Number.isInteger), `every column has a width: ${row}`);
+    assert.ok(row.reduce((a, b) => a + b) <= 760, "they fit Confluence's default page width");
+  }
+  assert.ok(widths[0][1] >= 2 * widths[0][2], 'Reason is much wider than Likelihood');
+  assert.ok(widths[1][1] >= 2 * widths[1][2], 'Action is much wider than Task');
+  for (const t of tables) {
+    for (const row of t.content) row.content.forEach((cell, i) => assert.deepEqual(cell.attrs.colwidth, t.content[0].content[i].attrs.colwidth));
+  }
+});
+
 test('ADF is valid for Confluence', () => {
   for (const doc of [pageDoc(input()), pageDoc(input({ reasons: [], plan: [], comparison: { rule: 'x', epics: [] } }))]) {
     for (const node of nodes(doc)) {

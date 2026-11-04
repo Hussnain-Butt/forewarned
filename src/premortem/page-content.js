@@ -11,6 +11,10 @@ import { evidenceItem } from './task-content.js';
 import { cut } from './validator.js';
 
 const TITLE_CHARS = 255;
+// Column widths in pixels, within Confluence's default page width of 760, so the reason and the
+// action get room and short values (#, likelihood, key) don't take a sixth of the table each.
+const WRONG_WIDTHS = [40, 220, 80, 140, 120, 160];
+const PLAN_WIDTHS = [40, 280, 90, 130, 110, 110];
 const day = (iso) => formatDay(dayOf(iso));
 
 // AC 1: the page says where its reasons come from, in the panel's own words.
@@ -74,7 +78,7 @@ function wrongRows({ reasons, evidence, epic }) {
     const parts = cardParts(reason, evidenceById, epic.key);
     const reasonCell = [paragraph(text(reason.title, [{ type: 'strong' }])), ...(parts.explanation ? [paragraph(text(parts.explanation))] : [])];
     return [cell(String(i + 1)), reasonCell, cell(reason.likelihood), cell(parts.baseRateLine), evidenceCell(reason, parts.chips), cell(reason.mitigation)];
-  }))];
+  }), WRONG_WIDTHS)];
 }
 
 function rightItems({ comparison, checks }) {
@@ -89,7 +93,7 @@ function planRows({ plan }) {
   if (!plan.length) return [paragraph(text('No action items yet.'))];
   return [table(['#', 'Action', 'Task', 'Owner', 'Due date', 'Status'], plan.map(({ action, task }, i) => (task
     ? [cell(String(i + 1)), cell(action), [paragraph(text(task.key, linkTo(task.url)))], cell(task.owner ?? 'Unassigned'), cell(task.due ? day(task.due) : 'No due date'), cell(task.status)]
-    : [cell(String(i + 1)), cell(action), cell('No task yet'), EMPTY, EMPTY, EMPTY])))];
+    : [cell(String(i + 1)), cell(action), cell('No task yet'), EMPTY, EMPTY, EMPTY])), PLAN_WIDTHS)];
 }
 
 // AC 9: the signals checked, with their notes, and every evidence item with its work item links.
