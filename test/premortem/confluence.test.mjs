@@ -257,6 +257,55 @@ test('tasks of reasons not on the page are in the plan too', async () => {
   assert.equal(rows[2][1], jira.created[0].body.fields.summary);
 });
 
+// AC 14 (at most 10 s): every request waits for the next "wave", so the count of waves is the number of
+// round trips one after another. Reads that don't depend on each other must share a wave.
+function waves() {
+  const pending = [];
+  const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((done) => { setImmediate(done); }); };
+  return {
+    wrap: (senders) => Object.fromEntries(Object.entries(senders).map(([name, send]) => [name, (...args) => new Promise((done) => { pending.push(() => done(send(...args))); })])),
+    async count(promise) {
+      let finished = false;
+      promise.then(() => { finished = true; }, () => { finished = true; });
+      let rounds = 0;
+      for (await settle(); !finished; await settle()) {
+        if (pending.length) {
+          rounds += 1;
+          pending.splice(0).forEach((go) => go());
+        }
+      }
+      await promise;
+      return rounds;
+    },
+  };
+}
+
+test('an update reads everything it needs at once, then writes', async () => {
+  const jira = { created: [], deleted: [] };
+  const kvs = await withRun();
+  const panel = await getPanelData({ deps: { port: portOf(fakeSenders(jira).senders), kvs, now: () => NOW }, epicKey: EPIC, accountId: 'acc-1' });
+  await createTasksAction({ deps: { port: portOf(fakeSenders(jira).senders), kvs, now: () => NOW, deadline: Infinity }, epicKey: EPIC, accountId: 'acc-1', fingerprints: [panel.report.ruleBased.reasons[0].fingerprint] });
+  const confluence = fakeConfluence();
+  await write(depsFor({ kvs, confluence, jira }));
+
+  const gate = waves();
+  const deps = { port: portOf(gate.wrap(fakeSenders(jira).senders)), confluence: portOf(gate.wrap(confluence.senders)), kvs, now: () => NOW, installed: true };
+  assert.equal(await gate.count(write(deps)), 3, 'the epic; then its fields, evidence, comparison, tasks, space and page together; then the update');
+  assert.equal(confluence.updated.length, 1);
+});
+
+test('a create adds only the title check', async () => {
+  const jira = { created: [], deleted: [] };
+  const kvs = await withRun();
+  const panel = await getPanelData({ deps: { port: portOf(fakeSenders(jira).senders), kvs, now: () => NOW }, epicKey: EPIC, accountId: 'acc-1' });
+  await createTasksAction({ deps: { port: portOf(fakeSenders(jira).senders), kvs, now: () => NOW, deadline: Infinity }, epicKey: EPIC, accountId: 'acc-1', fingerprints: [panel.report.ruleBased.reasons[0].fingerprint] });
+  const confluence = fakeConfluence();
+  const gate = waves();
+  const deps = { port: portOf(gate.wrap(fakeSenders(jira).senders)), confluence: portOf(gate.wrap(confluence.senders)), kvs, now: () => NOW, installed: true };
+  assert.equal(await gate.count(write(deps)), 4, 'the epic; the reads together; the title check; the create');
+  assert.equal(confluence.created.length, 1);
+});
+
 test('bad input', async () => {
   const kvs = await withRun();
   const deps = depsFor({ kvs, confluence: fakeConfluence() });

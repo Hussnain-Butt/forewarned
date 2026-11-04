@@ -92,10 +92,9 @@ export async function listSpacesAction({ deps: { port, confluence, kvs, installe
 
 // AC 8: one row per reason on the page, with its task when the user can still read it, then every
 // other task Forewarned created for this epic (for example from the other tab) that still exists.
-// Owner, due date and status are read from Jira now, as the user.
-async function planFor({ port, pack, reasons, actions }) {
+// Owner, due date and status come from `issues`: the tasks as Jira gives them now, read as the user.
+function planFor({ pack, reasons, actions, issues }) {
   const mapped = Object.entries(actions.tasks);
-  const issues = new Map((await readVisible(port, mapped.map(([, task]) => task.id), TASK_FIELDS)).map((issue) => [issue.id, issue]));
   const taskOf = (issue) => ({
     key: issue.key,
     url: browseUrl(pack, issue.key),
@@ -114,17 +113,19 @@ async function planFor({ port, pack, reasons, actions }) {
   ];
 }
 
-// AC 12: updates the stored page as a new version, keeping its title. Null when the page is gone
-// (deleted, trashed or archived), so a new one is created.
-async function updateStored({ confluence, page, body, space }) {
-  let current;
+// The stored page as Confluence has it now: { current } for a published page, {} when it is gone
+// (deleted, trashed or archived, so a new one is created), or { error } when Confluence won't say.
+async function readCurrent(confluence, page) {
   try {
-    current = await confluence.page(page.id);
+    const current = await confluence.page(page.id);
+    return current?.status === 'current' ? { current } : {};
   } catch (error) {
-    if (error?.status === 404) return null;
-    return { failed: failure(error, 'read', space) };
+    return error?.status === 404 ? {} : { error };
   }
-  if (current?.status !== 'current') return null;
+}
+
+// AC 12: updates the stored page as a new version, keeping its title.
+async function updateStored({ confluence, page, current, body, space }) {
   try {
     const saved = await confluence.updatePage(page.id, {
       id: page.id, status: 'current', title: current.title, body, version: { number: current.version.number + 1, message: 'Updated by Forewarned' },
@@ -167,17 +168,25 @@ export async function writePageAction({ deps: { port, confluence, kvs, now, inst
   if (installed === false) return UNAVAILABLE;
 
   const { pack } = stored;
+  // Everything the page needs is read at once (AC 14: at most 10 s): the epic's fields, what the user
+  // may see, the comparison epics, the tasks, the chosen space, and the stored page with its version.
   const readSpace = confluence.space(spaceId).then((space) => ({ space }), (failed) => ({ failed: failure(failed, 'read', 'this space') }));
-  const [live, hidden, seenEpics, page, actions, chosen] = await Promise.all([
+  const readTasks = readActions(kvs, epic.id).then(async (actions) => ({
+    actions,
+    issues: new Map((await readVisible(port, Object.values(actions.tasks).map((task) => task.id), TASK_FIELDS)).map((issue) => [issue.id, issue])),
+  }));
+  const readPrevious = readPage(kvs, epic.id).then(async (page) => ({ page, ...(page?.spaceId === spaceId ? await readCurrent(confluence, page) : {}) }));
+  const [live, hidden, seenEpics, { actions, issues }, previous, chosen] = await Promise.all([
     port.issue(epic.key, ['summary', 'status', 'duedate', 'assignee']),
     hiddenEvidenceIds(port, pack),
     readVisible(port, (pack.comparison?.epics ?? []).map((e) => e.key), ['summary']),
-    readPage(kvs, epic.id),
-    readActions(kvs, epic.id),
+    readTasks,
+    readPrevious,
     readSpace,
   ]);
   if (chosen.failed) return chosen.failed;
   const spaceName = chosen.space.name ?? chosen.space.key ?? 'this space';
+  if (previous.error) return failure(previous.error, 'read', spaceName);
 
   // Only what this user may see goes on the page (story 002 AC 2), and the agent write-up only when
   // it was written on the current evidence and has reasons for them (AC 1).
@@ -203,21 +212,21 @@ export async function writePageAction({ deps: { port, confluence, kvs, now, inst
     source: agent ? 'agent' : 'rule',
     reasons,
     evidence: packForReader(pack, hidden).evidence,
-    plan: await planFor({ port, pack, reasons, actions }),
+    plan: planFor({ pack, reasons, actions, issues }),
     checks: pack.checks,
     writtenOn,
   });
   const body = { representation: 'atlas_doc_format', value: JSON.stringify(doc) };
 
   // AC 12: the stored page in the same space is updated; in another space, or gone, a new one is made.
-  const sameSpace = page && page.spaceId === spaceId;
-  const result = (sameSpace && await updateStored({ confluence, page, body, space: spaceName }))
-    || await createNew({ confluence, spaceId, summary, epicKey: epic.key, writtenOn, body, space: spaceName });
+  const result = previous.current
+    ? await updateStored({ confluence, page: previous.page, current: previous.current, body, space: spaceName })
+    : await createNew({ confluence, spaceId, summary, epicKey: epic.key, writtenOn, body, space: spaceName });
   if (result.failed) return result.failed;
 
   const links = result.saved?._links;
   const site = pack.epic.url.slice(0, pack.epic.url.indexOf('/browse/'));
-  const url = links?.webui ? `${links.base ?? `${site}/wiki`}${links.webui}` : page?.url;
+  const url = links?.webui ? `${links.base ?? `${site}/wiki`}${links.webui}` : previous.page?.url;
   const record = { id: String(result.saved.id), spaceId, spaceName, title: result.title, url, by: accountId, at: new Date(now()).toISOString() };
   await writePage(kvs, epic.id, record);
   return {
