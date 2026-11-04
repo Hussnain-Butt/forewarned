@@ -21,9 +21,10 @@ const messageFor = (name, status) => {
   return `Jira returned status ${status} for the ${name} request.`;
 };
 
-// Senders that change Jira (story 006). A 5xx can come after the change was made, so they are not
-// sent again after one; a 429 means Jira didn't take the request, so that one is still retried.
-const CHANGES = new Set(['createIssue', 'createLink']);
+// Senders that change Jira (story 006) or Confluence (story 007, whose port uses this wrapper too).
+// A 5xx can come after the change was made, so they are not sent again after one; a 429 means the
+// request wasn't taken, so that one is still retried.
+const CHANGES = new Set(['createIssue', 'createLink', 'createPage', 'updatePage']);
 
 // Wraps every sender with the same counting, retry and error handling. A 429 or 5xx is retried
 // once after Retry-After seconds (default 2), but only when the retry would still finish before

@@ -35,7 +35,7 @@ const quote = (value) => `"${value}"`;
 const person = (user) => (user?.accountId ? { accountId: user.accountId, displayName: user.displayName ?? 'Former user' } : null);
 
 // Runs fn over items with at most 5 requests in flight; the first failure stops the rest.
-async function mapLimit(items, fn) {
+export async function mapLimit(items, fn) {
   const results = new Array(items.length);
   let next = 0;
   let failed = false;

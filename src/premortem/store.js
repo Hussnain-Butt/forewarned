@@ -49,6 +49,17 @@ export async function readActions(kvs, epicId) {
 
 export const writeActions = (kvs, epicId, actions) => kvs.set(actionsKey(epicId), actions);
 
+// Story 007 AC 11: the epic's Confluence page (its ID, space and link), so the next click updates it.
+// It has its own key: a task batch writes back the whole actions value it read when it started, which
+// would drop a page saved in the meantime.
+const pageKey = (epicId) => `page:${epicId}`;
+
+export async function readPage(kvs, epicId) {
+  return (await kvs.get(pageKey(epicId))) ?? null;
+}
+
+export const writePage = (kvs, epicId, page) => kvs.set(pageKey(epicId), page);
+
 // Story 006 AC 4: one create at a time per epic. The lock expires after 60 seconds, but KVS may
 // return an expired value for up to 48 hours, so a lock 60 s or older (a crashed call) is taken over.
 const TASKS_LOCK_MS = 60000;

@@ -4,8 +4,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  readActions, readAgentRequest, readPremortem, readRunStatus, releaseTasksLock, takeTasksLock, writeActions,
-  writeAgentRequest, writePremortem, writeRunStatus,
+  readActions, readAgentRequest, readPage, readPremortem, readRunStatus, releaseTasksLock, takeTasksLock, writeActions,
+  writeAgentRequest, writePage, writePremortem, writeRunStatus,
 } from '../../src/premortem/store.js';
 import { fakeKvs as policyKvs } from './fakes.mjs';
 
@@ -58,6 +58,17 @@ test('the tasks map is one key per epic, without expiry', async () => {
   assert.deepEqual([...kvs.data.keys()], ['actions:10001']);
   assert.equal(kvs.data.get('actions:10001').options, undefined);
   assert.deepEqual(await readActions(kvs, '10001'), actions);
+});
+
+// Story 007 AC 11: the epic's Confluence page, in its own key so a task batch never overwrites it.
+test('the page record is one key per epic, without expiry', async () => {
+  const kvs = fakeKvs();
+  assert.equal(await readPage(kvs, '10001'), null);
+  const page = { id: '7001', spaceId: '102', spaceName: 'Alpha', title: 'Pre-mortem: Checkout (CHK-12)', url: 'https://x/wiki/p', by: 'acc-1', at: 't' };
+  await writePage(kvs, '10001', page);
+  assert.deepEqual([...kvs.data.keys()], ['page:10001']);
+  assert.equal(kvs.data.get('page:10001').options, undefined);
+  assert.deepEqual(await readPage(kvs, '10001'), page);
 });
 
 // Story 006 AC 4: a second create on the same epic is refused while one runs.

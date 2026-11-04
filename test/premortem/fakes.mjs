@@ -91,7 +91,10 @@ export function fakeSenders({
       createLink: async (body) => { links.push(body); return new Response(null, { status: 201 }); },
       bulkIssues: async (body) => {
         const page = await (await senders.bulkIssues(body)).json();
-        const tasks = visibleCreated(body.issueIdsOrKeys).map((t) => ({ id: t.id, key: t.key, fields: { summary: t.body.fields.summary } }));
+        // A test sets `task.fields` (assignee, duedate, status) to change a task after it was created.
+        const tasks = visibleCreated(body.issueIdsOrKeys).map((t) => ({
+          id: t.id, key: t.key, fields: { summary: t.body.fields.summary, status: { name: 'To Do' }, assignee: null, duedate: null, ...t.fields },
+        }));
         return json({ ...page, issues: [...page.issues, ...tasks] });
       },
     },
@@ -99,3 +102,55 @@ export function fakeSenders({
 }
 
 export const portOf = (senders) => createJira(senders, { deadline: Infinity, sleep: async () => {} });
+
+// Confluence spaces as REST v2 lists them (story 007): two the user can create pages in, one they can
+// only view, and a personal space.
+export const SPACES = [
+  { id: '101', key: 'ZETA', name: 'Zeta', type: 'global' },
+  { id: '102', key: 'ALPHA', name: 'Alpha', type: 'global' },
+  { id: '103', key: 'BETA', name: 'Beta', type: 'global' },
+  { id: '104', key: '~me', name: 'My space', type: 'personal' },
+];
+
+// The Confluence senders of forge-confluence.js. `creatable` lists the space IDs where the user may
+// create pages; `pages` is the site's pages (shared and changed by creates and updates); `fail` maps a
+// sender name to the HTTP status it answers with. `requests` names every request in order.
+export function fakeConfluence({ spaces = SPACES, creatable = ['101', '102', '104'], pages = [], fail = {} } = {}) {
+  const created = [];
+  const updated = [];
+  const requests = [];
+  const spaceOf = (id) => spaces.find((space) => space.id === String(id));
+  const senders = {
+    spaces: async () => json({ results: [...spaces].sort((a, b) => a.name.localeCompare(b.name)), _links: {} }),
+    space: async (id) => (spaceOf(id) ? json(spaceOf(id)) : json({}, 404)),
+    spaceOperations: async (id) => json({
+      operations: [{ operation: 'read', targetType: 'space' }, ...(creatable.includes(String(id)) ? [{ operation: 'create', targetType: 'page' }] : [])],
+    }),
+    page: async (id) => {
+      const page = pages.find((p) => p.id === String(id));
+      return page ? json(page) : json({}, 404);
+    },
+    pagesByTitle: async (spaceId, title) => json({ results: pages.filter((p) => p.spaceId === String(spaceId) && p.title === title && p.status === 'current') }),
+    createPage: async (body) => {
+      const id = String(7001 + created.length);
+      created.push(body);
+      const page = { id, status: 'current', title: body.title, spaceId: body.spaceId, version: { number: 1 }, body: body.body, _links: { base: 'https://seed.example/wiki', webui: `/spaces/${spaceOf(body.spaceId)?.key}/pages/${id}` } };
+      pages.push(page);
+      return json(page);
+    },
+    updatePage: async (id, body) => {
+      const page = pages.find((p) => p.id === String(id));
+      updated.push({ id: String(id), body });
+      Object.assign(page, { title: body.title, version: body.version, body: body.body });
+      return json(page);
+    },
+  };
+  // Every sender records its request and answers with its `fail` status when there is one.
+  for (const [name, send] of Object.entries(senders)) {
+    senders[name] = async (...args) => {
+      requests.push(name);
+      return fail[name] ? json({ message: 'Failed' }, fail[name]) : send(...args);
+    };
+  }
+  return { senders, created, updated, requests, pages };
+}

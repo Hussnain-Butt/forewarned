@@ -136,6 +136,11 @@ export function exactTime(iso, timeZone) {
 // AC 27: a report more than 24 hours old.
 export const isOld = (iso, now) => now - Date.parse(iso) > DAY_MS;
 
+// Story 007 AC 15 and its edge case: shown in place of the Confluence button. The server's answers
+// use them too, so they live here.
+export const CONFLUENCE_UNAVAILABLE = "Confluence isn't available for Forewarned on this site, so it can't create a page. Everything else works.";
+export const CONFLUENCE_UPGRADE = 'Ask your admin to update Forewarned in Confluence.';
+
 // Story 006: the ticked reasons in the order the panel shows them, so the new keys follow that order.
 export const inReasonOrder = (reasons, selected) => reasons.map((reason) => reason.fingerprint).filter((fp) => selected.has(fp));
 
