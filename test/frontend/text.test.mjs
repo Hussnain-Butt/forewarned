@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   cardParts, checkLines, comparisonParts, createLabel, creatingLine, droppedLine, exactTime, headline, historyLine, inReasonOrder, isOld,
-  likelihoodLozenge, relativeTime, sortByLikelihood, stepLines, taskResultParts,
+  likelihoodLozenge, pageButtonLabel, pageConfirmLabel, pageResultParts, pageWritingLine, relativeTime, sortByLikelihood, stepLines,
+  taskResultParts,
 } from '../../src/frontend/text.js';
 
 const TODAY = new Date('2026-11-02T08:00:00Z');
@@ -201,4 +202,21 @@ test('inReasonOrder', () => {
   assert.deepEqual(inReasonOrder(reasons, new Set(['d', 'b', 'a'])), ['a', 'b', 'd']);
   assert.deepEqual(inReasonOrder(reasons, new Set(['x', 'c'])), ['c'], 'a tick on a reason no longer shown is dropped');
   assert.deepEqual(inReasonOrder(reasons, new Set()), []);
+});
+
+// Story 007: the Confluence section's buttons, progress line and result.
+test('the Confluence page labels', () => {
+  assert.equal(pageButtonLabel(false), 'Create Confluence page');
+  assert.equal(pageButtonLabel(true), 'Update Confluence page');
+  assert.equal(pageConfirmLabel(false), 'Create page');
+  assert.equal(pageConfirmLabel(true), 'Update page');
+  assert.equal(pageWritingLine(false), 'Creating the Confluence page…');
+  assert.equal(pageWritingLine(true), 'Updating the Confluence page…');
+});
+
+test('pageResultParts', () => {
+  const page = { url: 'https://x/wiki/p', title: 'Pre-mortem: Checkout (CHK-12)', spaceId: '102', spaceName: 'Alpha' };
+  assert.deepEqual(pageResultParts({ updated: false, dated: false, page }), { line: 'Page created in Alpha.', note: null });
+  assert.deepEqual(pageResultParts({ updated: true, dated: false, page }), { line: 'Page updated.', note: null });
+  assert.deepEqual(pageResultParts({ updated: false, dated: true, page }), { line: 'Page created in Alpha.', note: 'Alpha already has a page with this title, so the date was added to it.' });
 });

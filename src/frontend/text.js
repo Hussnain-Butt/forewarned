@@ -173,3 +173,17 @@ export function taskResultParts(results) {
     failures,
   };
 }
+
+// Story 007 AC 1, 11–12: the Confluence button reads "Update" once the epic has a page; the confirm
+// button says whether the chosen space's page is updated or a new one is created.
+export const pageButtonLabel = (hasPage) => (hasPage ? 'Update Confluence page' : 'Create Confluence page');
+export const pageConfirmLabel = (updating) => (updating ? 'Update page' : 'Create page');
+
+// The progress line under the confirm button while the page is written (story 005 AC 30).
+export const pageWritingLine = (updating) => (updating ? 'Updating the Confluence page…' : 'Creating the Confluence page…');
+
+// AC 12–13: what happened, in words; `note` says when the title got the date.
+export const pageResultParts = ({ updated, dated, page }) => ({
+  line: updated ? 'Page updated.' : `Page created in ${page.spaceName}.`,
+  note: dated ? `${page.spaceName} already has a page with this title, so the date was added to it.` : null,
+});
