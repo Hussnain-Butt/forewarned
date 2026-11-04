@@ -306,6 +306,43 @@ test('a create adds only the title check', async () => {
   assert.equal(confluence.created.length, 1);
 });
 
+// Final review, Important 1: a task's summary is its reason's mitigation, so a task whose reason the
+// writer can't see must stay off the page, like the reason itself (Review Focus 1).
+test("tasks of reasons the writer can't see stay off the page", async () => {
+  const jira = { created: [], deleted: [] };
+  const kvs = await withRun();
+  const panel = await getPanelData({ deps: { port: portOf(fakeSenders(jira).senders), kvs, now: () => NOW }, epicKey: EPIC, accountId: 'acc-1' });
+  const dependency = panel.report.ruleBased.reasons.find((r) => r.ruleId === 'dependency');
+  await createTasksAction({ deps: { port: portOf(fakeSenders(jira).senders), kvs, now: () => NOW, deadline: Infinity }, epicKey: EPIC, accountId: 'acc-1', fingerprints: [dependency.fingerprint] });
+
+  const confluence = fakeConfluence();
+  await write(depsFor({ kvs, confluence, jira: { ...jira, hidden: [BLOCKER] } }));
+  const sent = JSON.stringify(confluence.created[0]);
+  assert.ok(!sent.includes(BLOCKER), 'no hidden work item key');
+  assert.ok(!sent.includes(dependency.mitigation), "no mitigation of a reason the writer can't see");
+});
+
+// Final review, Important 2 (and /ponytail-review): the 50-space cap is for spaces the user can
+// create in, so spaces past the first 50 they can see are checked too.
+test('spaces the user can create in are found past the first 50 they can see', async () => {
+  const kvs = await withRun();
+  const viewOnly = Array.from({ length: 80 }, (_, i) => ({ id: String(300 + i), key: `V${i}`, name: `View ${String(i).padStart(2, '0')}`, type: 'global' }));
+  const zeta = { id: '999', key: 'ZZ', name: 'Zeta', type: 'global' };
+  const result = await listSpacesAction({ deps: depsFor({ kvs, confluence: fakeConfluence({ spaces: [...viewOnly, zeta], creatable: ['999'] }) }), epicKey: EPIC });
+  assert.deepEqual(result.spaces, [{ id: '999', key: 'ZZ', name: 'Zeta' }]);
+
+  const creatable = Array.from({ length: 60 }, (_, i) => ({ id: String(500 + i), key: `C${i}`, name: `Can ${String(i).padStart(2, '0')}`, type: 'global' }));
+  const confluence = fakeConfluence({ spaces: creatable, creatable: creatable.map((s) => s.id) });
+  await listSpacesAction({ deps: depsFor({ kvs, confluence }), epicKey: EPIC });
+  assert.equal(confluence.requests.filter((name) => name === 'spaceOperations').length, 50, 'it stops once 50 are found');
+});
+
+test('a walk through many spaces stops before the time runs out', async () => {
+  const kvs = await withRun();
+  const deps = { ...depsFor({ kvs, confluence: fakeConfluence() }), deadline: NOW + 1000 };
+  assert.deepEqual(await listSpacesAction({ deps, epicKey: EPIC }), { error: 'Confluence took too long to list its spaces. Try again in a minute.' });
+});
+
 test('bad input', async () => {
   const kvs = await withRun();
   const deps = depsFor({ kvs, confluence: fakeConfluence() });

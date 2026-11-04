@@ -18,7 +18,7 @@ const runQueue = new Queue({ key: 'premortem-run' });
 const START_BUDGET_MS = 15000;
 // Creating tasks makes one request per task, so it gets most of the 25 s.
 const TASKS_BUDGET_MS = 20000;
-// Story 007: listing spaces (up to 51 requests, 5 at a time) or writing the page (about 8 requests).
+// Story 007: listing spaces (one request per space checked, 5 at a time) or writing the page (about 8 requests).
 const CONFLUENCE_BUDGET_MS = 15000;
 const CONFLUENCE_ERROR = "Forewarned couldn't reach Confluence. Try again in a minute.";
 
@@ -100,7 +100,7 @@ resolver.define('getConfluenceSpaces', async ({ context }) => {
   if (!issueKey) return { error: 'This panel needs a work item.' };
   try {
     const deadline = Date.now() + CONFLUENCE_BUDGET_MS;
-    const deps = { port: createJira(forgeSenders(), { deadline }), confluence: createJira(confluenceSenders(), { deadline }), kvs, installed: confluenceInstalled() };
+    const deps = { port: createJira(forgeSenders(), { deadline }), confluence: createJira(confluenceSenders(), { deadline }), kvs, installed: confluenceInstalled(), now: Date.now, deadline };
     return await listSpacesAction({ deps, epicKey: issueKey });
   } catch (error) {
     console.error('getConfluenceSpaces failed:', error instanceof Error ? error.name : 'Unknown error');

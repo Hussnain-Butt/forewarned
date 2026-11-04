@@ -13,8 +13,10 @@ import { readActions, readPage, readPremortem, writePage } from './store.js';
 import { browseUrl, withFingerprints } from './tasks.js';
 import { hiddenEvidenceIds, packForReader, reportForReader } from './visibility.js';
 
-// AC 2: the picker lists at most 50 spaces.
+// AC 2: the picker lists at most 50 spaces. Spaces are checked in batches of that size, and a batch
+// isn't started with less than 3 s left of the resolver's time.
 const MAX_SPACES = 50;
+const MIN_TIME_LEFT_MS = 3000;
 const TASK_FIELDS = ['summary', 'assignee', 'duedate', 'status'];
 
 const UNAVAILABLE = { error: CONFLUENCE_UNAVAILABLE, unavailable: true };
@@ -59,8 +61,9 @@ function failure(error, call, space) {
 }
 
 // AC 2: the spaces where the user can create pages, by name, at most 50, and the space this epic's
-// page was last written to as the default. Personal spaces are left out.
-export async function listSpacesAction({ deps: { port, confluence, kvs, installed }, epicKey }) {
+// page was last written to as the default. Personal spaces are left out. `deps.deadline` (optional)
+// is when the resolver's time ends.
+export async function listSpacesAction({ deps: { port, confluence, kvs, installed, now = Date.now, deadline }, epicKey }) {
   const { epic, error } = await epicFor(port, epicKey);
   if (error) return { error };
   if (installed === false) return UNAVAILABLE;
@@ -75,25 +78,41 @@ export async function listSpacesAction({ deps: { port, confluence, kvs, installe
     if (failed.status === 429 || failed.status >= 500) return { error: BUSY };
     return { error: "Confluence couldn't list its spaces. Try again in a minute." };
   }
-  const candidates = (listed?.results ?? []).filter((space) => space.type !== 'personal').slice(0, MAX_SPACES);
-  // Each space's operations, 5 at a time; a space whose operations can't be read is left out.
-  const creatable = await mapLimit(candidates, async (space) => {
+  const candidates = (listed?.results ?? []).filter((space) => space.type !== 'personal');
+  // Whether the user may create pages in a space, from its operations; one that can't be read is left out.
+  const canCreate = async (space) => {
     try {
       const operations = (await confluence.spaceOperations(space.id))?.operations ?? [];
       return operations.some((op) => op.operation === 'create' && op.targetType === 'page');
     } catch {
       return false;
     }
-  });
-  const spaces = candidates.filter((_, i) => creatable[i]).map(({ id, key, name }) => ({ id: String(id), key, name }));
+  };
+  // The cap is on spaces the user can create in, so the spaces they can see are checked a batch at a
+  // time (5 requests in flight) until 50 are found, the list ends or time runs short.
+  const spaces = [];
+  let outOfTime = false;
+  for (let start = 0; start < candidates.length && spaces.length < MAX_SPACES; start += MAX_SPACES) {
+    if (deadline && deadline - now() < MIN_TIME_LEFT_MS) {
+      outOfTime = true;
+      break;
+    }
+    const batch = candidates.slice(start, start + MAX_SPACES);
+    const creatable = await mapLimit(batch, canCreate);
+    spaces.push(...batch.filter((_, i) => creatable[i]).map(({ id, key, name }) => ({ id: String(id), key, name })));
+  }
+  if (outOfTime && !spaces.length) return { error: 'Confluence took too long to list its spaces. Try again in a minute.' };
+  spaces.splice(MAX_SPACES);
   const stored = await readPage(kvs, epic.id);
   return { spaces, defaultSpaceId: spaces.some((space) => space.id === stored?.spaceId) ? stored.spaceId : null };
 }
 
-// AC 8: one row per reason on the page, with its task when the user can still read it, then every
-// other task Forewarned created for this epic (for example from the other tab) that still exists.
-// Owner, due date and status come from `issues`: the tasks as Jira gives them now, read as the user.
-function planFor({ pack, reasons, actions, issues }) {
+// AC 8: one row per reason on the page, with its task when the user can still read it, then the
+// tasks of the writer's other visible reasons (the other tab). A task's summary is its reason's
+// mitigation, so the task of a reason hidden from the writer stays off the page, like the reason
+// (story 002 AC 2). `visible` holds the fingerprints of every reason the writer can see. Owner, due
+// date and status come from `issues`: the tasks as Jira gives them now, read as the user.
+function planFor({ pack, reasons, actions, issues, visible }) {
   const mapped = Object.entries(actions.tasks);
   const taskOf = (issue) => ({
     key: issue.key,
@@ -103,7 +122,7 @@ function planFor({ pack, reasons, actions, issues }) {
     status: issue.fields?.status?.name ?? 'Unknown',
   });
   const onPage = new Set(reasons.map((reason) => reason.fingerprint));
-  const others = mapped.filter(([fingerprint]) => !onPage.has(fingerprint)).map(([, task]) => issues.get(task.id)).filter(Boolean);
+  const others = mapped.filter(([fingerprint]) => visible.has(fingerprint) && !onPage.has(fingerprint)).map(([, task]) => issues.get(task.id)).filter(Boolean);
   return [
     ...reasons.map((reason) => {
       const issue = issues.get(actions.tasks[reason.fingerprint]?.id);
@@ -212,7 +231,7 @@ export async function writePageAction({ deps: { port, confluence, kvs, now, inst
     source: agent ? 'agent' : 'rule',
     reasons,
     evidence: packForReader(pack, hidden).evidence,
-    plan: planFor({ pack, reasons, actions, issues }),
+    plan: planFor({ pack, reasons, actions, issues, visible: new Set([...report.ruleBased.reasons, ...(report.agent?.reasons ?? [])].map((reason) => reason.fingerprint)) }),
     checks: pack.checks,
     writtenOn,
   });
