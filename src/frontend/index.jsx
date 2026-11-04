@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ForgeReconciler, { Button, Inline, SectionMessage, SectionMessageAction, Spinner, Stack, Text } from '@forge/react';
 import { invoke, rovo, view } from '@forge/bridge';
+import { ConfluencePage } from './confluence.jsx';
 import { Report } from './report.jsx';
 import { RunSteps } from './running.jsx';
 import { TaskBar } from './tasks.jsx';
@@ -8,7 +9,8 @@ import { inReasonOrder, sortByLikelihood } from './text.js';
 import { EPICS_ONLY } from '../premortem/epic.js';
 
 // The Forewarned epic panel (story 005): run the pre-mortem, follow its steps, read the report, ask
-// the Forewarned agent in Rovo for its write-up, and create tasks for the reasons (story 006).
+// the Forewarned agent in Rovo for its write-up, create tasks for the reasons (story 006) and write
+// the pre-mortem page in Confluence (story 007).
 
 const RUN_POLL_MS = 2000;
 const SLOW_AFTER_MS = 60 * 1000;
@@ -281,6 +283,7 @@ const App = () => {
       {report ? (
         <Report panel={panel} now={Date.now()} tab={tab} onTabChange={selectTab} tasks={{ selected: chosen, onToggle: toggle, canCreate: panel.canCreate, byFingerprint }}>
           {taskBar}
+          {panel.confluence ? <ConfluencePage confluence={panel.confluence} /> : null}
         </Report>
       ) : null}
       {agentWait === 'waiting' ? (

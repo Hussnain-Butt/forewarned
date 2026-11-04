@@ -167,7 +167,7 @@ const AgentWriteUp = ({ agent, evidenceById, epicKey, tasks }) => {
 };
 
 // The headline, the notes, the reasons (in two tabs once the agent has written), then `children`
-// (the task bar, story 006), the comparison set and who ran it. `tab` is 0 for the agent's write-up
+// (the task bar, story 006, and the Confluence page, story 007), the comparison set and who ran it. `tab` is 0 for the agent's write-up
 // and 1 for the rule-based list. `tasks` is { selected (a Set of fingerprints), onToggle, canCreate,
 // byFingerprint ({ [fingerprint]: { key, url } }) }.
 export const Report = ({ panel, now, tab, onTabChange, tasks, children }) => {
