@@ -183,10 +183,11 @@ test('the tables give their long text the wide columns', () => {
     assert.ok(row.every(Number.isInteger), `every column has a width: ${row}`);
     assert.ok(row.reduce((a, b) => a + b) <= 760, "they fit Confluence's default page width");
   }
-  assert.ok(widths[0][1] >= 2 * widths[0][2], 'Reason is much wider than Likelihood');
-  assert.ok(widths[1][1] >= 2 * widths[1][2], 'Action is much wider than Task');
-  // Seen on the site at 80 / 90 / 110 px: "Likeliho-od", "No task / yet" and "No due / date" broke.
-  assert.ok(widths[0][2] >= 96, '"Likelihood" fits on one line');
+  assert.equal(Math.max(...widths[0]), widths[0][1], 'Reason is the widest column');
+  assert.equal(Math.max(...widths[1]), widths[1][1], 'Action is the widest column');
+  // Seen on the site at 80 / 90 / 110 px: "Likeliho-od", "No task / yet" and "No due / date" broke;
+  // Confluence also scales the table to the page (96 px rendered as 90, still "Likelihoo-d").
+  assert.ok(widths[0][2] >= 112, '"Likelihood" fits on one line');
   assert.ok(widths[1][2] >= 100, '"No task yet" fits on one line');
   assert.ok(widths[1][4] >= 120, '"No due date" fits on one line');
   for (const t of tables) {
