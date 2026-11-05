@@ -45,8 +45,10 @@ const App = () => {
   // after a Check again that found nothing new.
   const [agentWait, setAgentWait] = useState(null);
   const [agentReady, setAgentReady] = useState(false);
-  // Counts the waits for the agent; only the latest one keeps checking (see waitForAgent).
+  // Counts the waits for the agent; only the latest one keeps checking (see waitForAgent). `gone`
+  // is set when the panel unmounts, so a wait that starts after that never checks.
   const agentWaits = useRef(0);
+  const gone = useRef(false);
   const [tab, setTab] = useState(AGENT_TAB);
   const tabRef = useRef(AGENT_TAB);
   const selectTab = (index) => {
@@ -143,7 +145,7 @@ const App = () => {
     // A newer wait (another click) or the panel going away ends this one.
     agentWaits.current += 1;
     const thisWait = agentWaits.current;
-    const cancelled = () => agentWaits.current !== thisWait;
+    const cancelled = () => gone.current || agentWaits.current !== thisWait;
     let hadAgent = hadCurrentAgent;
     const arrived = await followAgentWriteUps({
       cancelled,
@@ -238,8 +240,15 @@ const App = () => {
   }, []);
 
   // Opening Rovo remounts the panel; the old copy's wait for the agent stops instead of reading
-  // the panel data for nobody (each check counts against the KVS allowance, story 009).
-  useEffect(() => () => { agentWaits.current += 1; }, []);
+  // the panel data for nobody (each check counts against the KVS allowance, story 009). Set up
+  // again on a second mount (React's StrictMode runs effects twice).
+  useEffect(() => {
+    gone.current = false;
+    return () => {
+      gone.current = true;
+      agentWaits.current += 1;
+    };
+  }, []);
 
   if (!panel) return <Spinner label="Loading the pre-mortem" />;
   if (panel.error) {

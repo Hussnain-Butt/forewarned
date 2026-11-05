@@ -73,10 +73,11 @@ export async function runPremortemAction({ deps, epicKey, accountId }) {
 }
 
 // get-evidence: the stored pack, so the agent cites exactly what submit-premortem checks against,
-// without the evidence the reader can't see (story 002 AC 2), plus the panel's headline and when
-// the run was. A run in progress is waited for (story 008 AC 4, 7), counted from the start of the
-// action so a slow epic read still leaves room in Rovo's 55 s. With no pack, or when the run it
-// waited for failed, the failure says why, so the agent can tell the user before it tries again.
+// without the evidence the reader can't see (story 002 AC 2), plus the panel's headline; the pack's
+// builtAt says when it was built. A run in progress is waited for (story 008 AC 4, 7), counted from
+// the start of the action so a slow epic read still leaves room in Rovo's 55 s. With no pack, or
+// when the run it waited for failed, the failure says why, so the agent can tell the user before
+// it tries again.
 export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
   const waitStart = deps.now();
   const { epic, error } = await epicFor(deps.port, requestedKey);
@@ -91,8 +92,7 @@ export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
   if (failedRecently(status, deps.now())) return { error: lastRunFailed(status) };
   const stored = await readPremortem(deps.kvs, epic.id);
   if (!stored) return { error: status?.status === 'failed' ? lastRunFailed(status) : noEvidence(epic.key) };
-  const pack = packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack));
-  return { epicKey: epic.key, ...headlineOf(stored.pack, deps.now()), runAt: stored.report.runAt, ...pack };
+  return { epicKey: epic.key, ...headlineOf(stored.pack, deps.now()), ...packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack)) };
 }
 
 // submit-premortem: validates the agent's reasons against the part of the stored pack the user can
@@ -139,7 +139,7 @@ async function readerPremortem(deps, requestedKey) {
   const stored = await readPremortem(deps.kvs, epic.id);
   if (!stored) return { epic, stored: false };
   const hidden = await hiddenEvidenceIds(deps.port, stored.pack);
-  return { epic, stored: true, pack: packForReader(stored.pack, hidden), report: reportForReader(stored.report, hidden) };
+  return { epic, stored: true, storedReport: stored.report, pack: packForReader(stored.pack, hidden), report: reportForReader(stored.report, hidden) };
 }
 
 // get-premortem (story 008 AC 4, 11): the headline, both lists of reasons numbered as the panel
@@ -188,11 +188,15 @@ export async function explainReasonAction({ deps, epicKey: requestedKey, reasonN
   if (!number) return { error: 'reasonNumber must be a whole number from 1 to 5.' };
   const asked = sourceOf(requestedSource);
   if (asked.error) return { error: asked.error };
-  const { epic, error, stored, pack, report } = await readerPremortem(deps, requestedKey);
+  const { epic, error, stored, storedReport, pack, report } = await readerPremortem(deps, requestedKey);
   if (error) return { error };
   if (!stored) return { error: noPremortem(epic.key) };
   const lists = readerLists(report);
   const source = asked.source ?? lists.shownFirst;
+  // Asked without a list while the agent's write-up is stale, the agent learns why the numbers
+  // refer to the rule-based reasons, in an answer or in an error.
+  const fellBack = !asked.source && lists.agentStale;
+  const withStaleNote = (message) => (fellBack ? `${message} The agent's write-up on ${epic.key} is based on an earlier run, so the numbers refer to the rule-based reasons.` : message);
   if (source === 'agent' && lists.agentStale) {
     return { error: `The agent's write-up on ${epic.key} is based on an earlier run. Ask me to write the pre-mortem again, or ask about a rule-based reason.` };
   }
@@ -200,12 +204,14 @@ export async function explainReasonAction({ deps, epicKey: requestedKey, reasonN
     return { error: `${epic.key} has no write-up from the Forewarned agent yet. Ask about a rule-based reason, or ask me to write the pre-mortem.` };
   }
   const reasons = source === 'agent' ? lists.agent : lists.ruleBased;
-  // A list the reader filter emptied says why, instead of "has 0 reasons".
-  if (!reasons.length && report.hiddenForReader) {
-    return { error: `The ${LIST_NAMES[source]} for ${epic.key} has no reasons you can see: they name work items you can't see or that no longer exist.` };
+  // A list the reader filter emptied says why, instead of "has 0 reasons"; a list that was empty
+  // anyway (no rule fired) doesn't.
+  const storedCount = source === 'agent' ? storedReport.agent?.reasons.length ?? 0 : storedReport.ruleBased.reasons.length;
+  if (!reasons.length && storedCount) {
+    return { error: withStaleNote(`The ${LIST_NAMES[source]} for ${epic.key} has no reasons you can see: they name work items you can't see or that no longer exist.`) };
   }
   const listed = reasons[number - 1];
-  if (!listed) return { error: `The ${LIST_NAMES[source]} for ${epic.key} has ${counted(reasons.length, 'reason')}, so there is no reason ${number}.` };
+  if (!listed) return { error: withStaleNote(`The ${LIST_NAMES[source]} for ${epic.key} has ${counted(reasons.length, 'reason')}, so there is no reason ${number}.`) };
   const { title, likelihood, explanation, evidenceIds, mitigation } = listed;
   const evidence = citedEvidence(pack, [listed]);
   return {
@@ -215,7 +221,6 @@ export async function explainReasonAction({ deps, epicKey: requestedKey, reasonN
     reason: { title, likelihood, explanation, evidenceIds, mitigation },
     evidence,
     ...(evidence.some((item) => item.baseRate) ? {} : { baseRateNote: NO_BASE_RATE }),
-    // Asked without a list, the agent learns why a rule-based reason answers.
-    ...(!asked.source && lists.agentStale ? { note: `The agent's write-up on ${epic.key} is based on an earlier run, so this is a rule-based reason.` } : {}),
+    ...(fellBack ? { note: `The agent's write-up on ${epic.key} is based on an earlier run, so this is a rule-based reason.` } : {}),
   };
 }
