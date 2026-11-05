@@ -41,3 +41,23 @@ test('every action function has a handler the actions module exports', () => {
   assert.equal(handlers.length, ACTIONS.length);
   for (const name of handlers) assert.match(actionsModule, new RegExp(`export const ${name} = `), name);
 });
+
+// Story 009 AC 12–13: every run starts from a click or a Rovo request, inside the free allowance.
+test('the manifest starts nothing in the background', () => {
+  for (const banned of [/^\s*scheduledTrigger:/m, /^\s*trigger:/m, /^\s*llm:/m, /container/i, /^\s*external:/m]) {
+    assert.doesNotMatch(manifest, banned);
+  }
+  const timeouts = [...manifest.matchAll(/timeoutSeconds: (\d+)/g)].map(([, seconds]) => Number(seconds));
+  assert.ok(timeouts.length > 0 && timeouts.every((seconds) => seconds <= 300), `timeouts ${timeouts}`);
+  assert.match(manifest, /^ {4}memoryMB: 256\r?$/m);
+});
+
+// forge lint refuses action descriptions over 255 characters (M7 ledger); run-premortem tells the
+// agent about the cache and the cap (story 009 AC 4, 6).
+test('action descriptions fit Forge, and run-premortem names the cache and the daily limit', () => {
+  for (const key of ACTIONS) {
+    const [, description] = actionBlock(key).match(/description: \|\r?\n {8}([^\r\n]+)/);
+    assert.ok(description.length <= 255, `${key}: ${description.length} characters`);
+  }
+  assert.match(actionBlock('run-premortem'), /It reuses the last run if nothing changed in 24 hours and refuses at the daily limit\./);
+});

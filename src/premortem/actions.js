@@ -7,7 +7,7 @@
 // in progress.
 
 import { counted } from '../engine/format.js';
-import { headline, NO_BASE_RATE } from '../frontend/text.js';
+import { exactTime, headline, NO_BASE_RATE } from '../frontend/text.js';
 import { citedEvidence, readerLists, savedReasonList } from './agent-view.js';
 import { notAnEpic, notVisible, readEpic } from './epic.js';
 import { withAgentWriteUp } from './report.js';
@@ -62,10 +62,30 @@ async function epicFor(port, requestedKey) {
   return epic.isEpic ? { epic } : { error: notAnEpic(epic.key) };
 }
 
-// run-premortem: the agent's way to start compute (the shared start function, AC 1).
+// Story 009 AC 4: how long until the cap resets, "in 25 minutes" or "in about 16 hours".
+function untilReset(resetsAt, nowMs) {
+  const minutes = Math.ceil((Date.parse(resetsAt) - nowMs) / 60000);
+  return minutes < 60 ? `in ${counted(minutes, 'minute')}` : `in about ${counted(Math.round(minutes / 60), 'hour')}`;
+}
+const OFFER_LAST = 'Offer to show the last pre-mortem.';
+
+// run-premortem: the agent's way to start compute (the shared start function, AC 1). The agent never
+// skips the cache: "Run again anyway" is the panel's (story 009 AC 7). It doesn't know the user's
+// time zone, so times are in UTC.
 export async function runPremortemAction({ deps, epicKey, accountId }) {
-  const result = await startRun({ ...deps, epicKey, accountId });
+  const result = await startRun({ ...deps, epicKey, accountId, force: false });
   if (result.error) return result;
+  if (result.status === 'capped') {
+    return {
+      error: result.cap > 0
+        ? `Forewarned's daily limit on this site is reached. It resets at 00:00 UTC, ${untilReset(result.resetsAt, deps.now())}. ${OFFER_LAST}`
+        : `New Forewarned runs are paused on this site for now. ${OFFER_LAST}`,
+    };
+  }
+  if (result.status === 'cached') {
+    const message = `Nothing in ${epicKey} has changed since the last run at ${exactTime(result.runAt, 'UTC')} UTC, so Forewarned kept that evidence. Call get-evidence now.`;
+    return { epicKey, ...result, message };
+  }
   const message = result.status === 'started'
     ? `Forewarned started building the evidence for ${epicKey}. ${callGetEvidence}`
     : `A run for ${epicKey} is already in progress. ${callGetEvidence}`;

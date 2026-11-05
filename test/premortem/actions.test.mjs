@@ -57,6 +57,33 @@ test('run-premortem starts a run, and says so when one is already running', asyn
   assert.equal(again.message, `A run for ${EPIC} is already in progress. Call get-evidence now; it waits up to 40 seconds for the run.`);
 });
 
+// Story 009 AC 6: nothing changed since the last run, so the agent writes on that evidence.
+test('run-premortem relays the cache', async () => {
+  const { deps, kvs } = await setup({ withRun: false });
+  await kvs.set(`run:${EPIC_ID}`, { runId: 'r0', status: 'done', step: null, startedAt: '2026-11-02T06:11:30.000Z', finishedAt: '2026-11-02T06:12:00.000Z', error: null });
+  assert.deepEqual(await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' }), {
+    epicKey: EPIC,
+    status: 'cached',
+    runAt: '2026-11-02T06:12:00.000Z',
+    message: `Nothing in ${EPIC} has changed since the last run at 2 Nov 2026, 06:12 UTC, so Forewarned kept that evidence. Call get-evidence now.`,
+  });
+  assert.equal(deps.queue.pushes.length, 0);
+});
+
+// Story 009 AC 4–5: the agent doesn't know the user's time zone, so the reset is in UTC.
+test('run-premortem relays the daily limit and the emergency brake', async () => {
+  const { deps, kvs } = await setup({ withRun: false });
+  await kvs.set('runs:2026-11-02', 15);
+  assert.deepEqual(await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' }),
+    { error: "Forewarned's daily limit on this site is reached. It resets at 00:00 UTC, in about 16 hours. Offer to show the last pre-mortem." });
+  deps.clock.now = Date.parse('2026-11-02T23:35:00.000Z');
+  assert.deepEqual(await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' }),
+    { error: "Forewarned's daily limit on this site is reached. It resets at 00:00 UTC, in 25 minutes. Offer to show the last pre-mortem." });
+  assert.deepEqual(await runPremortemAction({ deps: { ...deps, cap: 0 }, epicKey: EPIC, accountId: 'acc-1' }),
+    { error: 'New Forewarned runs are paused on this site for now. Offer to show the last pre-mortem.' });
+  assert.equal(deps.queue.pushes.length, 0);
+});
+
 const HEADLINE = "It's 14 Dec 2026, and Checkout v2 launch has failed. Here's why.";
 const STILL_RUNNING = { epicKey: EPIC, status: 'running', message: 'Still running. Ask me to continue in a moment.' };
 

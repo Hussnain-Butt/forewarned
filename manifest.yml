@@ -60,7 +60,7 @@ modules:
       function: run-premortem-fn
       actionVerb: TRIGGER
       description: |
-        Starts a new Forewarned run for a Jira epic and returns at once; the evidence and rule-based reasons are built in the background. Call it when get-evidence finds no evidence or the user asks for a new run, then call get-evidence.
+        Starts a Forewarned run for a Jira epic and returns at once. Call it when get-evidence finds no evidence or the user asks for a new run, then call get-evidence. It reuses the last run if nothing changed in 24 hours and refuses at the daily limit.
       inputs:
         epicKey:
           title: Epic key
