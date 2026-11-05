@@ -126,13 +126,37 @@ export function relativeTime(iso, now) {
   return `${counted(Math.floor(ms / DAY_MS), 'day')} ago`;
 }
 
+// The date and time of `ms` as the reader's clock shows them (or `timeZone`'s).
+const localParts = (ms, timeZone) => Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone,
+}).formatToParts(new Date(ms)).map(({ type, value }) => [type, value]));
+
 // The exact date and time, in the reader's time zone unless `timeZone` is given: "2 Nov 2026, 17:26".
 export function exactTime(iso, timeZone) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone,
-  }).formatToParts(new Date(iso)).map(({ type, value }) => [type, value]));
+  const parts = localParts(Date.parse(iso), timeZone);
   return `${Number(parts.day)} ${MONTHS[Number(parts.month) - 1]} ${parts.year}, ${parts.hour}:${parts.minute}`;
 }
+
+// Story 009: a time near today with its day, in the reader's time zone: "05:00 tomorrow", "11:12
+// today", "23:00 yesterday"; further away, the exact date and time.
+export function timeWithDay(iso, now, timeZone) {
+  const at = localParts(Date.parse(iso), timeZone);
+  const dayNumber = (parts) => Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)) / DAY_MS;
+  const word = { 0: 'today', 1: 'tomorrow', '-1': 'yesterday' }[dayNumber(at) - dayNumber(localParts(now, timeZone))];
+  return word ? `${at.hour}:${at.minute} ${word}` : exactTime(iso, timeZone);
+}
+
+// Story 005 AC 24 with the cap from FW_DAILY_RUN_CAP; a cap of 0 is the developer's emergency brake
+// (story 009 AC 5), so there is no reset to wait for.
+export function capLine({ cap, resetsAt, hasReport, now, timeZone }) {
+  const line = cap > 0
+    ? `Forewarned has run ${counted(cap, 'pre-mortem')} on this site today, the daily limit that keeps it free to run. It resets at ${timeWithDay(resetsAt, now, timeZone)}.`
+    : 'New runs are paused on this site for now, to keep Forewarned free to run.';
+  return hasReport ? `${line} The last report is below.` : line;
+}
+
+// Story 005 AC 25: Run found nothing changed since the last run (story 009 AC 6).
+export const cachedLine = (runAt, now, timeZone) => `Nothing in this epic has changed since the last run at ${timeWithDay(runAt, now, timeZone)}, so Forewarned is showing that report.`;
 
 // AC 27: a report more than 24 hours old.
 export const isOld = (iso, now) => now - Date.parse(iso) > DAY_MS;

@@ -3,9 +3,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  cardParts, checkLines, comparisonParts, createLabel, creatingLine, droppedLine, exactTime, headline, historyLine, inReasonOrder, isOld,
-  likelihoodLozenge, pageButtonLabel, pageConfirmLabel, pageResultParts, pageWritingLine, relativeTime, sortByLikelihood, stepLines,
-  taskResultParts,
+  cachedLine, capLine, cardParts, checkLines, comparisonParts, createLabel, creatingLine, droppedLine, exactTime, headline, historyLine,
+  inReasonOrder, isOld, likelihoodLozenge, pageButtonLabel, pageConfirmLabel, pageResultParts, pageWritingLine, relativeTime,
+  sortByLikelihood, stepLines, taskResultParts, timeWithDay,
 } from '../../src/frontend/text.js';
 
 const TODAY = new Date('2026-11-02T08:00:00Z');
@@ -221,4 +221,37 @@ test('pageResultParts', () => {
   assert.deepEqual(pageResultParts({ updated: false, dated: false, page }), { line: 'Page created in Alpha.', note: null });
   assert.deepEqual(pageResultParts({ updated: true, dated: false, page }), { line: 'Page updated.', note: null });
   assert.deepEqual(pageResultParts({ updated: false, dated: true, page }), { line: 'Page created in Alpha.', note: 'Alpha already has a page with this title, so the date was added to it.' });
+});
+
+// Story 009: the cap resets at 00:00 UTC, which a reader in Pakistan sees as 05:00.
+const RESET = '2026-11-03T00:00:00.000Z';
+const KARACHI = 'Asia/Karachi';
+
+test("timeWithDay says today, tomorrow or yesterday in the reader's time zone", () => {
+  const now = TODAY.getTime();
+  assert.equal(timeWithDay(RESET, now, KARACHI), '05:00 tomorrow');
+  assert.equal(timeWithDay(RESET, now, 'UTC'), '00:00 tomorrow');
+  assert.equal(timeWithDay(RESET, Date.parse('2026-11-02T23:30:00.000Z'), KARACHI), '05:00 today');
+  assert.equal(timeWithDay('2026-11-01T18:00:00.000Z', now, KARACHI), '23:00 yesterday');
+  assert.equal(timeWithDay('2026-11-05T09:00:00.000Z', now, 'UTC'), '5 Nov 2026, 09:00');
+});
+
+// Story 005 AC 24 with the cap from FW_DAILY_RUN_CAP; 0 is the emergency brake (story 009 AC 5).
+test('capLine', () => {
+  const now = TODAY.getTime();
+  assert.equal(capLine({ cap: 15, resetsAt: RESET, hasReport: true, now, timeZone: KARACHI }),
+    'Forewarned has run 15 pre-mortems on this site today, the daily limit that keeps it free to run. It resets at 05:00 tomorrow. The last report is below.');
+  assert.equal(capLine({ cap: 15, resetsAt: RESET, hasReport: false, now, timeZone: KARACHI }),
+    'Forewarned has run 15 pre-mortems on this site today, the daily limit that keeps it free to run. It resets at 05:00 tomorrow.');
+  assert.match(capLine({ cap: 1, resetsAt: RESET, hasReport: false, now, timeZone: KARACHI }), /^Forewarned has run 1 pre-mortem on this site today,/);
+  assert.equal(capLine({ cap: 0, resetsAt: RESET, hasReport: true, now, timeZone: KARACHI }),
+    'New runs are paused on this site for now, to keep Forewarned free to run. The last report is below.');
+  assert.equal(capLine({ cap: 0, resetsAt: RESET, hasReport: false, now, timeZone: KARACHI }),
+    'New runs are paused on this site for now, to keep Forewarned free to run.');
+});
+
+// Story 005 AC 25.
+test('cachedLine', () => {
+  assert.equal(cachedLine('2026-11-02T06:12:00.000Z', TODAY.getTime(), KARACHI),
+    'Nothing in this epic has changed since the last run at 11:12 today, so Forewarned is showing that report.');
 });

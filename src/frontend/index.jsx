@@ -6,7 +6,7 @@ import { ConfluencePage } from './confluence.jsx';
 import { Report } from './report.jsx';
 import { RunSteps } from './running.jsx';
 import { TaskBar } from './tasks.jsx';
-import { inReasonOrder, sortByLikelihood } from './text.js';
+import { cachedLine, capLine, inReasonOrder, sortByLikelihood } from './text.js';
 import { EPICS_ONLY } from '../premortem/epic.js';
 
 // The Forewarned epic panel (story 005): run the pre-mortem, follow its steps, read the report, ask
@@ -39,6 +39,9 @@ const App = () => {
   const [panel, setPanel] = useState(null);
   // { status, slow } while a run goes, { failed } or { timedOut } when it ended badly, else null.
   const [run, setRun] = useState(null);
+  // Story 009: { capped: { cap, resetsAt } } when the daily cap refused a start, { cached: runAt }
+  // when a start found nothing changed since the last run, else null.
+  const [notice, setNotice] = useState(null);
   const following = useRef(false);
   const [rovoEnabled, setRovoEnabled] = useState(null);
   // 'waiting' while the panel checks for the agent's write-up, 'expired' after 3 minutes, 'checked'
@@ -117,12 +120,27 @@ const App = () => {
   };
 
   // AC 5: the running state shows at once; the start function checks the epic and the permission.
-  const startRun = async () => {
+  // Story 009: it may give the last run back (nothing changed) or refuse (the daily cap). `force` is
+  // "Run again anyway"; only a real `true` is sent, since an onClick would pass its event.
+  const startRun = async (force) => {
     const startedAt = Date.now();
+    setNotice(null);
     setRun({ status: { status: 'queued' }, slow: false });
-    const started = await invoke('startRun').catch(() => ({ error: START_ERROR }));
+    const started = await invoke('startRun', { force: force === true }).catch(() => ({ error: START_ERROR }));
     if (started.error) {
       setRun({ failed: started.error });
+      return;
+    }
+    if (started.status === 'capped') {
+      setRun(null);
+      setNotice({ capped: { cap: started.cap, resetsAt: started.resetsAt } });
+      return;
+    }
+    if (started.status === 'cached') {
+      // Someone else's run may have replaced the report this panel shows.
+      if (panel?.report?.runAt !== started.runAt) await load();
+      setRun(null);
+      setNotice({ cached: started.runAt });
       return;
     }
     await follow(startedAt);
@@ -335,13 +353,24 @@ const App = () => {
       )}
       {/* The run's progress and outcome sit next to the button that started it. */}
       {runError ? (
-        <SectionMessage appearance="error" actions={canRun ? <SectionMessageAction onClick={startRun}>Try again</SectionMessageAction> : undefined}>
+        <SectionMessage appearance="error" actions={canRun ? <SectionMessageAction onClick={() => startRun(false)}>Try again</SectionMessageAction> : undefined}>
           <Text>{runError}</Text>
+        </SectionMessage>
+      ) : null}
+      {/* Story 005 AC 24–25: the daily cap and an unchanged epic, with times on the reader's clock. */}
+      {notice?.capped ? (
+        <SectionMessage appearance="information">
+          <Text>{capLine({ ...notice.capped, hasReport: Boolean(report), now: Date.now() })}</Text>
+        </SectionMessage>
+      ) : null}
+      {notice?.cached ? (
+        <SectionMessage appearance="information" actions={canRun ? <SectionMessageAction onClick={() => startRun(true)}>Run again anyway</SectionMessageAction> : undefined}>
+          <Text>{cachedLine(notice.cached, Date.now())}</Text>
         </SectionMessage>
       ) : null}
       {running ? <RunSteps status={run.status} slow={run.slow} /> : null}
       <Inline space="space.100" shouldWrap>
-        <Button appearance={report ? 'default' : 'primary'} onClick={startRun} isDisabled={running || !canRun}>
+        <Button appearance={report ? 'default' : 'primary'} onClick={() => startRun(false)} isDisabled={running || !canRun || Boolean(notice?.capped)}>
           {report ? 'Re-run' : 'Run pre-mortem'}
         </Button>
         {/* The agent's save needs edit permission too, so a viewer isn't left waiting for nothing. */}
