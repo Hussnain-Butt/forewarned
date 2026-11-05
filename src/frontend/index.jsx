@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ForgeReconciler, { Button, Inline, SectionMessage, SectionMessageAction, Spinner, Stack, Text } from '@forge/react';
 import { invoke, rovo, view } from '@forge/bridge';
+import { followAgentWriteUps } from './agent-wait.js';
 import { ConfluencePage } from './confluence.jsx';
 import { Report } from './report.jsx';
 import { RunSteps } from './running.jsx';
@@ -133,19 +134,25 @@ const App = () => {
   };
 
   // AC 19: checks for the agent's write-up every 5 s until 3 minutes after the request, without a
-  // reload.
+  // reload. Checking goes on quietly after the first save, so the agent's fixed resubmission
+  // (story 008) replaces it too.
   const waitForAgent = async (savedBefore, hadCurrentAgent, startedAt) => {
     setAgentWait('waiting');
-    while (Date.now() - startedAt < AGENT_LIMIT_MS) {
-      await wait(AGENT_POLL_MS);
-      const result = await invoke('getPanel').catch(() => null);
-      const savedAt = result?.report?.agent?.savedAt;
-      if (savedAt && savedAt !== savedBefore) {
-        showNewWriteUp(result, hadCurrentAgent);
-        return;
-      }
-    }
-    setAgentWait('expired');
+    let hadAgent = hadCurrentAgent;
+    const arrived = await followAgentWriteUps({
+      check: () => invoke('getPanel').catch(() => null),
+      wait,
+      now: Date.now,
+      startedAt,
+      savedBefore,
+      limitMs: AGENT_LIMIT_MS,
+      pollMs: AGENT_POLL_MS,
+      onWriteUp: (result) => {
+        showNewWriteUp(result, hadAgent);
+        hadAgent = hasCurrentAgent(result);
+      },
+    });
+    if (!arrived) setAgentWait('expired');
   };
 
   const checkAgainForAgent = async () => {
