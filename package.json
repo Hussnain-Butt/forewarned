@@ -11,7 +11,8 @@
     "seed:test": "node --test \"scripts/seed/test/*.test.mjs\"",
     "engine:test": "node --test \"test/engine/*.test.mjs\"",
     "engine:run": "node scripts/engine/run-on-site.mjs",
-    "test": "npm run seed:test && npm run engine:test && npm run premortem:test && npm run frontend:test",
+    "test": "npm run seed:test && npm run engine:test && npm run premortem:test && npm run frontend:test && npm run docs:test",
+    "docs:test": "node --test \"test/docs/*.test.mjs\"",
     "premortem:test": "node --test \"test/premortem/*.test.mjs\"",
     "frontend:test": "node --test \"test/frontend/*.test.mjs\""
   },
