@@ -81,8 +81,9 @@ test('numbersIn and keysIn read only real quantities and real keys', () => {
 // resubmitted three times. The drop names its own numbers or keys that the cited evidence lacks;
 // it is the agent's own text, checked against evidence it can see, so nothing hidden leaks.
 test('a dropped reason names the numbers or keys its cited evidence lacks', () => {
-  assert.deepEqual(one(reason({ explanation: 'Comparable epics were about 40 days late, 3 weeks more than CHK-7.', evidenceIds: ['E2'], likelihood: 'Medium', mitigation: 'Add 5,000 days.' })).dropped,
-    [{ title: 'Epics like this one usually finish late', code: 'unknown-number', notInEvidence: ['40', '3', '5000'] }]);
+  // As written, so the agent finds them in its own text ("three", not "3"; M7 minor).
+  assert.deepEqual(one(reason({ explanation: 'Comparable epics were about 40 days late, three weeks more than CHK-7.', evidenceIds: ['E2'], likelihood: 'Medium', mitigation: 'Add 5,000 days.' })).dropped,
+    [{ title: 'Epics like this one usually finish late', code: 'unknown-number', notInEvidence: ['40', '5,000', 'three'] }]);
   assert.deepEqual(one(reason({ explanation: 'CHK-99 and PLT-5 finished 42 days late.', evidenceIds: ['E2'], likelihood: 'Medium', mitigation: 'Add buffer.' })).dropped,
     [{ title: 'Epics like this one usually finish late', code: 'unknown-key', notInEvidence: ['CHK-99', 'PLT-5'] }]);
 });

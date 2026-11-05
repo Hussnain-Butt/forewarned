@@ -25,15 +25,18 @@ const LINK = /https?:\/\/[^\s)\]]+|www\.[^\s)\]]+|\]\([^)]*\)/gi;
 const linksIn = (text) => [...String(text ?? '').matchAll(LINK)].map(([link]) => link.replace(/[.,;:!?…]+$/, ''));
 const knownLinksIn = (text) => new Set(linksIn(text).flatMap((link) => (link.startsWith('](') ? [link, link.slice(2, -1)] : [link])));
 
-// The quantities in a text, normalized ("5,121" → "5121", "86 %" → "86"). Work item keys and
-// evidence IDs are removed first, so "CHK-12" and "E3" are not numbers.
-export function numbersIn(text) {
+// The quantities in a text as written and normalized ("5,121" → "5121", "86 %" → "86", "three"
+// → "3"). Work item keys and evidence IDs are removed first, so "CHK-12" and "E3" are not numbers.
+function numberTokensIn(text) {
   const clean = String(text ?? '').replace(KEY, ' ').replace(EVIDENCE_ID, ' ');
-  const found = new Set();
-  for (const [match] of clean.matchAll(NUMBER)) found.add(match.replace(/[,\s%]/g, ''));
-  for (const [, word] of clean.matchAll(NUMBER_WORD)) found.add(String(NUMBER_WORDS[word.toLowerCase()]));
-  return found;
+  return [
+    ...[...clean.matchAll(NUMBER)].map(([match]) => ({ raw: match, value: match.replace(/[,\s%]/g, '') })),
+    ...[...clean.matchAll(NUMBER_WORD)].map(([match, word]) => ({ raw: match, value: String(NUMBER_WORDS[word.toLowerCase()]) })),
+  ];
 }
+
+// The quantities in a text, normalized.
+export const numbersIn = (text) => new Set(numberTokensIn(text).map(({ value }) => value));
 
 // The work item keys in a text, such as "PLT-31".
 export const keysIn = (text) => new Set(String(text ?? '').match(KEY) ?? []);
@@ -87,10 +90,10 @@ function check(input, byId, epic, keep) {
   // AC 12–13: every number and key in the reason must come from what it cites. The epic itself
   // (its key and summary) is the subject of the whole pack, so it is always known.
   const sources = [epic?.summary, ...cited.flatMap((item) => [item.fact, ...(item.links ?? []).map((l) => l.summary)])];
-  // A drop names the reason's own numbers or keys that its cited evidence lacks (story 008), so the
-  // agent can fix exactly those.
+  // A drop names the reason's own numbers or keys that its cited evidence lacks (story 008), as
+  // written, so the agent can find and fix exactly those.
   const knownNumbers = new Set(sources.flatMap((s) => [...numbersIn(s)]));
-  const unknownNumbers = [...numbersIn(written)].filter((n) => !knownNumbers.has(n));
+  const unknownNumbers = [...new Set(numberTokensIn(written).filter(({ value }) => !knownNumbers.has(value)).map(({ raw }) => raw))];
   if (unknownNumbers.length) return { code: 'unknown-number', title, notInEvidence: unknownNumbers };
   const knownKeys = new Set([epic?.key, ...keysIn(epic?.summary), ...cited.flatMap((item) => [...keysIn(item.fact), ...(item.links ?? []).map((l) => l.key)])]);
   const unknownKeys = [...keysIn(written)].filter((k) => !knownKeys.has(k));
