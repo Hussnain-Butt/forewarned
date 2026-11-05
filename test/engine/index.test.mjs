@@ -44,3 +44,32 @@ test('a run that builds no pack still logs its one line (AC 33)', async () => {
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^Evidence pack: not built, \d+ Jira requests, \d+ ms$/);
 });
+
+// Story 009 AC 11: the consumer logs one line per run with these counts, so the engine's own line
+// would be a second one.
+test('onSummary gets the counts instead of the console line, also when no pack is built', async () => {
+  const summaries = [];
+  const { result, lines } = await capture(() => buildEvidencePack({
+    senders: seedPort().senders, epicKey: keyOf('ll-chk-e11'), accountId: 'acc-requester', now: () => NOW, onSummary: (s) => summaries.push(s),
+  }));
+  assert.deepEqual(lines, []);
+  assert.equal(summaries.length, 1);
+  assert.ok(summaries[0].requests > 0);
+  assert.equal(summaries[0].evidence, result.pack.evidence.length);
+  assert.equal(summaries[0].bytes, Buffer.byteLength(JSON.stringify(result.pack), 'utf8'));
+
+  const notBuilt = [];
+  await capture(() => buildEvidencePack({
+    senders: seedPort().senders, epicKey: keyOf('bk-chk-e11-03'), accountId: 'acc-requester', now: () => NOW, onSummary: (s) => notBuilt.push(s),
+  }));
+  assert.equal(notBuilt.length, 1);
+  assert.ok(notBuilt[0].requests > 0);
+  assert.equal(notBuilt[0].evidence, null);
+  assert.equal(notBuilt[0].bytes, null);
+
+  const failed = [];
+  const senders = { ...seedPort().senders, search: async () => { throw new TypeError('boom'); } };
+  await assert.rejects(capture(() => buildEvidencePack({ senders, epicKey: keyOf('ll-chk-e11'), accountId: 'a', now: () => NOW, onSummary: (s) => failed.push(s) })), TypeError);
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0].evidence, null);
+});

@@ -24,36 +24,51 @@ class RunFailure extends Error {
 }
 
 // Runs one queued pre-mortem. `senders` must act as the user in event.body.accountId; `principal`
-// is the account ID the platform gives the consumer, when it gives one.
+// is the account ID the platform gives the consumer, when it gives one. Every run ends with one log
+// line of counts (story 009 AC 11), and nothing is thrown back to the queue, not even a KVS failure
+// before the run starts (AC 14).
 export async function handleRun({ event, principal, senders, kvs: store, now = Date.now, log = console.log }) {
   const { runId, epicKey, epicId, accountId } = event.body ?? {};
   if (!runId || !accountId || !ISSUE_KEY.test(epicKey ?? '') || !ISSUE_ID.test(epicId ?? '')) {
     log('Pre-mortem run skipped: invalid event');
     return;
   }
+  const startedMs = now();
+  const counts = { requests: 0, evidence: 0 };
+  const onSummary = ({ requests, evidence }) => Object.assign(counts, { requests, evidence: evidence ?? 0 });
+  let outcome;
+  try {
+    outcome = await runEvent({ event, principal, senders, store, now, log, onSummary });
+  } catch (error) {
+    outcome = `failed (${error?.name ?? 'Error'})`;
+  }
+  if (outcome) log(`Pre-mortem run ${runId}: ${outcome}, ${now() - startedMs} ms, ${counts.requests} Jira requests, ${counts.evidence} evidence items`);
+}
+
+// The run itself. Returns "done" or "failed (‹code›)", or null when the event is out of date.
+async function runEvent({ event, principal, senders, store, now, log, onSummary }) {
+  const { runId, epicKey, epicId, accountId } = event.body;
   // A newer run (or none) for this epic means this event is out of date; a finished run's event
   // can arrive again because delivery is "at least once".
   const current = await readRunStatus(store, epicId);
   if (current?.runId !== runId || ['done', 'failed'].includes(current.status)) {
     log('Pre-mortem run skipped: replaced by a newer run, or already finished');
-    return;
+    return null;
   }
   const setStatus = (fields) => writeRunStatus(store, epicId, { runId, startedAt: current.startedAt, step: null, count: null, finishedAt: null, error: null, ...fields });
   const fail = async (code, message) => {
     await setStatus({ status: 'failed', finishedAt: new Date(now()).toISOString(), error: message });
-    log(`Pre-mortem run failed: ${code}`);
+    return `failed (${code})`;
   };
   // The event was written by startRun from the Forge context of the user who clicked Run; if the
   // platform names a different user, nothing runs on their behalf.
   if (principal && principal !== accountId) {
-    await fail('principal', "Forewarned couldn't confirm who started this run. Try again.");
-    return;
+    return fail('principal', "Forewarned couldn't confirm who started this run. Try again.");
   }
   // "running" before this event started means an earlier delivery timed out (300 s) or crashed;
   // running again would only time out again, so the run ends here.
   if (current.status === 'running' || event.retryContext) {
-    await fail('retried', 'The run took too long. Try again in a minute.');
-    return;
+    return fail('retried', 'The run took too long. Try again in a minute.');
   }
   // One KVS write per step: a step the status already shows is not written again. "past epics"
   // carries how many epics are read, and later steps keep it (story 005 AC 5).
@@ -68,7 +83,7 @@ export async function handleRun({ event, principal, senders, kvs: store, now = D
 
   try {
     await showStep('comparable epics');
-    const result = await buildEvidencePack({ senders, epicKey, accountId, now, onStep: showStep });
+    const result = await buildEvidencePack({ senders, epicKey, accountId, now, onStep: showStep, onSummary });
     if (result.error) throw new RunFailure('not-an-epic', `${epicKey} is no longer an epic or no longer exists.`);
     const { pack } = result;
 
@@ -78,14 +93,18 @@ export async function handleRun({ event, principal, senders, kvs: store, now = D
     const { kept, dropped } = validateReasons(ruleBasedReasons(pack), pack, { keep: ['ruleId', 'baseRateFact'] });
     for (const { code } of dropped) log(`Rule-based reason dropped: ${code}`);
 
+    let report;
     try {
       const previous = (await readPremortem(store, epicId))?.report;
-      const report = buildReport({ pack, ruleReasons: kept, previous, accountId, now: now() });
+      report = buildReport({ pack, ruleReasons: kept, previous, accountId, now: now() });
       await writePremortem(store, epicId, { pack, report });
     } catch {
       throw new RunFailure('save', `Forewarned couldn't save the report on ${epicKey}.`);
     }
-    await setStatus({ status: 'done', finishedAt: new Date(now()).toISOString() });
+    // The finish time is the report's run time, so the panel can tell whether the report it shows
+    // is this run's (story 009 AC 6).
+    await setStatus({ status: 'done', finishedAt: report.runAt });
+    return 'done';
   } catch (error) {
     const failure = error instanceof RunFailure ? error : new RunFailure(error?.name ?? 'Error', `Forewarned couldn't build the evidence for ${epicKey}. Try again in a minute.`);
     try {
@@ -93,7 +112,7 @@ export async function handleRun({ event, principal, senders, kvs: store, now = D
     } catch {
       // Nothing more to do; the status expires on its own.
     }
-    log(`Pre-mortem run failed: ${failure.code}`);
+    return `failed (${failure.code})`;
   }
 }
 

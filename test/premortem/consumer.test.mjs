@@ -14,14 +14,14 @@ const EPIC_ID = await idOf(EPIC);
 const NOW = Date.parse('2026-11-02T08:00:00.000Z');
 const quiet = () => {};
 
-async function run({ epicKey = EPIC, epicId = EPIC_ID, statusRunId = 'r1', eventRunId = 'r1', statusValue = 'queued', principal, senderOptions, failSet, before } = {}) {
+async function run({ epicKey = EPIC, epicId = EPIC_ID, statusRunId = 'r1', eventRunId = 'r1', statusValue = 'queued', principal, senderOptions, failSet, before, now = () => NOW } = {}) {
   const kvs = fakeKvs({ failSet });
   const fake = fakeSenders(senderOptions);
   await kvs.set(`run:${epicId}`, { runId: statusRunId, status: statusValue, step: null, startedAt: new Date(NOW).toISOString(), finishedAt: null, error: null });
   kvs.writes.length = 0;
   await before?.({ kvs, fake });
   const logs = [];
-  await handleRun({ event: { body: { runId: eventRunId, epicKey, epicId, accountId: 'acc-1' } }, principal, senders: fake.senders, kvs, now: () => NOW, log: (line) => logs.push(line) });
+  await handleRun({ event: { body: { runId: eventRunId, epicKey, epicId, accountId: 'acc-1' } }, principal, senders: fake.senders, kvs, now, log: (line) => logs.push(line) });
   return { kvs, fake, logs, status: kvs.data.get(`run:${epicId}`).value };
 }
 
@@ -68,14 +68,16 @@ test('a failing write fails the run, logs one line and returns normally (AC 8, R
   const { status, logs } = await run({ failSet: (key) => key.startsWith('premortem:') });
   assert.equal(status.status, 'failed');
   assert.equal(status.error, `Forewarned couldn't save the report on ${EPIC}.`);
-  assert.deepEqual(logs, ['Pre-mortem run failed: save']);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /^Pre-mortem run r1: failed \(save\), \d+ ms, [1-9]\d* Jira requests, [1-9]\d* evidence items$/);
 });
 
 test('any other error fails the run without throwing', async () => {
   const { status, logs } = await run({ before: ({ fake }) => { fake.senders.search = async () => { throw new TypeError('boom'); }; } });
   assert.equal(status.status, 'failed');
   assert.equal(status.error, `Forewarned couldn't build the evidence for ${EPIC}. Try again in a minute.`);
-  assert.deepEqual(logs, ['Pre-mortem run failed: TypeError']);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /^Pre-mortem run r1: failed \(TypeError\), \d+ ms, [1-9]\d* Jira requests, 0 evidence items$/);
 });
 
 test('an agent write-up survives a new run, marked as based on an older pack (AC 6, Review Focus 5)', async () => {
@@ -97,7 +99,7 @@ test('an event that arrives while its run already shows "running" was retried af
   const { status, logs, kvs } = await run({ statusValue: 'running' });
   assert.equal(status.status, 'failed');
   assert.equal(status.error, 'The run took too long. Try again in a minute.');
-  assert.deepEqual(logs, ['Pre-mortem run failed: retried']);
+  assert.deepEqual(logs, ['Pre-mortem run r1: failed (retried), 0 ms, 0 Jira requests, 0 evidence items']);
   assert.equal(storedOf(kvs, EPIC_ID), undefined);
 });
 
@@ -107,4 +109,32 @@ test('an event whose principal is another user fails instead of spinning', async
   assert.equal(status.error, "Forewarned couldn't confirm who started this run. Try again.");
   assert.equal(storedOf(kvs, EPIC_ID), undefined);
   assert.equal((await run({ principal: 'acc-1' })).status.status, 'done');
+});
+
+// Story 009 AC 11: errors, plus one line per run with counts only.
+test('a run logs exactly one summary line without work item content', async () => {
+  let clock = NOW;
+  const { logs, kvs } = await run({ now: () => { clock += 10; return clock; } });
+  const { pack } = storedOf(kvs, EPIC_ID);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /^Pre-mortem run r1: done, [1-9]\d* ms, [1-9]\d* Jira requests, [1-9]\d* evidence items$/);
+  assert.ok(logs[0].endsWith(`, ${pack.evidence.length} evidence items`));
+  for (const text of [EPIC, EPIC_ID, 'acc-1', pack.epic.summary]) assert.ok(!logs[0].includes(text), `the line names ${text}`);
+});
+
+// Story 009 AC 14: Forge retries an event whose handler throws, for up to 24 hours.
+test('the consumer never throws, even when KVS fails before the run starts', async () => {
+  const kvs = fakeKvs();
+  kvs.get = async () => { throw new Error('KVS is down'); };
+  const logs = [];
+  await handleRun({ event: { body: { runId: 'r1', epicKey: EPIC, epicId: EPIC_ID, accountId: 'acc-1' } }, senders: fakeSenders().senders, kvs, now: () => NOW, log: (line) => logs.push(line) });
+  assert.deepEqual(logs, ['Pre-mortem run r1: failed (Error), 0 ms, 0 Jira requests, 0 evidence items']);
+});
+
+// The panel tells "the report it shows" from a newer one by this time (story 009 AC 6, plan Task 3).
+test("a done status's finishedAt is the saved report's runAt", async () => {
+  let clock = NOW;
+  const { status, kvs } = await run({ now: () => { clock += 1000; return clock; } });
+  assert.equal(status.status, 'done');
+  assert.equal(status.finishedAt, storedOf(kvs, EPIC_ID).report.runAt);
 });
