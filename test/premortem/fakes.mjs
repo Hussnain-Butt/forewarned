@@ -56,13 +56,18 @@ export const CREATE_FIELDS = [
   field('parent', 'Parent'), field('description', 'Description'), field('labels', 'Labels'), field('reporter', 'Reporter', true, true),
 ];
 
+// Story 009 AC 6: the start function's one count query, "did the epic or a child change since the
+// last run?". The seed has no update times, so `changes` (default 0) is its answer.
+const CHANGE_QUERY = /^\(issue = \d+ OR parent = \d+\) AND updated >= "-\d+m"$/;
+export const isChangeQuery = (jql) => CHANGE_QUERY.test(jql);
+
 // Seed-port senders plus the user's permissions on the epic and work item creation. `created`
 // (bodies of the work items created, with their new IDs and keys CHK-901, CHK-902, …), `links` and
 // `deleted` (keys deleted since) can be shared between senders, so another user reads the same
 // Jira. `failCreate(n)` gives an HTTP status for the n-th create request (retries count), or 0.
 export function fakeSenders({
   canEdit = true, canCreate = true, types = CREATE_TYPES, fields = CREATE_FIELDS, failCreate = () => 0,
-  created = [], links = [], deleted = [], ...seedOptions
+  created = [], links = [], deleted = [], changes = 0, ...seedOptions
 } = {}) {
   const { senders, log, keys } = seedPort(seedOptions);
   let createRequests = 0;
@@ -75,6 +80,11 @@ export function fakeSenders({
     deleted,
     senders: {
       ...senders,
+      count: async (jql) => {
+        if (!isChangeQuery(jql)) return senders.count(jql);
+        log.push(jql);
+        return json({ count: changes });
+      },
       myPermissions: async () => json({ permissions: { EDIT_ISSUES: { havePermission: canEdit }, CREATE_ISSUES: { havePermission: canCreate } } }),
       createMetaTypes: async () => json({ issueTypes: types, startAt: 0, maxResults: 200, total: types.length }),
       createMetaFields: async () => json({ fields, startAt: 0, maxResults: 200, total: fields.length }),

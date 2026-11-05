@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { forgeSenders } from '../engine/forge-jira.js';
 import { createJira } from '../engine/jira.js';
 import { explainReasonAction, getEvidenceAction, getPremortemAction, runPremortemAction, submitPremortemAction } from '../premortem/actions.js';
+import { dailyRunCap } from '../premortem/run.js';
 
 const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9_]*-\d+$/;
 // Rovo actions get 55 s; retries stop once they would end after this.
@@ -51,8 +52,12 @@ const action = (name, run) => async (payload, context) => {
   }
 };
 
-export const runPremortem = action('run-premortem', ({ deps, epicKey, context }) => (
-  runPremortemAction({ deps, epicKey, accountId: context?.principal?.accountId })));
+// Only this action reads the daily cap (story 009 AC 5), so the others never log its error.
+export const runPremortem = action('run-premortem', ({ deps, epicKey, context }) => runPremortemAction({
+  deps: { ...deps, cap: dailyRunCap(process.env.FW_DAILY_RUN_CAP, console.error) },
+  epicKey,
+  accountId: context?.principal?.accountId,
+}));
 
 export const getEvidence = action('get-evidence', ({ deps, epicKey }) => getEvidenceAction({ deps, epicKey }));
 

@@ -27,6 +27,17 @@ export async function readPremortem(kvs, epicId) {
 
 export const writePremortem = (kvs, epicId, { pack, report }) => kvs.set(premortemKey(epicId), { pack, report });
 
+// Story 009 AC 1–3: runs started per installation and UTC day ("2026-11-02"), one key per day, so
+// the count never needs resetting; it is kept 48 hours, past the day it counts.
+const RUN_COUNT_TTL = { unit: 'HOURS', value: 48 };
+const runCountKey = (day) => `runs:${day}`;
+
+export async function readRunCount(kvs, day) {
+  return (await kvs.get(runCountKey(day))) ?? 0;
+}
+
+export const writeRunCount = (kvs, day, count) => kvs.set(runCountKey(day), count, { ttl: RUN_COUNT_TTL });
+
 // "Waiting for the agent" (story 005 AC 19), per epic and user for 5 minutes: opening Rovo remounts
 // the Jira panel, so the panel's own state can't hold it.
 const AGENT_REQUEST_TTL = { unit: 'MINUTES', value: 5 };

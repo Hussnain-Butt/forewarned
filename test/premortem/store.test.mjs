@@ -4,8 +4,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  readActions, readAgentRequest, readPage, readPremortem, readRunStatus, releaseTasksLock, takeTasksLock, writeActions,
-  writeAgentRequest, writePage, writePremortem, writeRunStatus,
+  readActions, readAgentRequest, readPage, readPremortem, readRunCount, readRunStatus, releaseTasksLock, takeTasksLock, writeActions,
+  writeAgentRequest, writePage, writePremortem, writeRunCount, writeRunStatus,
 } from '../../src/premortem/store.js';
 import { fakeKvs as policyKvs } from './fakes.mjs';
 
@@ -26,6 +26,16 @@ test('the run status is one key per epic with a 24-hour expiry', async () => {
   assert.deepEqual(kvs.data.get('run:10001').options, { ttl: { unit: 'HOURS', value: 24 } });
   assert.deepEqual(await readRunStatus(kvs, '10001'), { runId: 'r1', status: 'running' });
   assert.equal(await readRunStatus(kvs, '10002'), null);
+});
+
+// Story 009 AC 3: one counter per UTC day, so it never needs resetting.
+test('the daily run counter is one key per UTC day with a 48-hour expiry', async () => {
+  const kvs = fakeKvs();
+  assert.equal(await readRunCount(kvs, '2026-11-02'), 0);
+  await writeRunCount(kvs, '2026-11-02', 3);
+  assert.deepEqual([...kvs.data.keys()], ['runs:2026-11-02']);
+  assert.deepEqual(kvs.data.get('runs:2026-11-02'), { value: 3, options: { ttl: { unit: 'HOURS', value: 48 } } });
+  assert.equal(await readRunCount(kvs, '2026-11-02'), 3);
 });
 
 // Not entity properties: Jira lets anyone who can browse the epic read and edit those.

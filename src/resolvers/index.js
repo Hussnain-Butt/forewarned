@@ -8,7 +8,7 @@ import { forgeSenders } from '../engine/forge-jira.js';
 import { createJira } from '../engine/jira.js';
 import { installedInConfluence, listSpacesAction, writePageAction } from '../premortem/confluence.js';
 import { getPanelData, requestAgentAction } from '../premortem/panel.js';
-import { startRun } from '../premortem/run.js';
+import { dailyRunCap, startRun } from '../premortem/run.js';
 import { readRunStatus } from '../premortem/store.js';
 import { createTasksAction } from '../premortem/tasks.js';
 
@@ -61,8 +61,9 @@ resolver.define('requestAgent', async ({ context }) => {
 });
 
 // Story 003 AC 1: "Run pre-mortem" for the epic in view. The account ID comes from the Forge
-// context, never from the panel.
-resolver.define('startRun', async ({ context }) => {
+// context, never from the panel; the panel only says whether to skip the cache ("Run again anyway",
+// story 009 AC 7), and the daily cap comes from the FW_DAILY_RUN_CAP variable (AC 5).
+resolver.define('startRun', async ({ payload, context }) => {
   try {
     return await startRun({
       port: createJira(forgeSenders(), { deadline: Date.now() + START_BUDGET_MS }),
@@ -72,6 +73,8 @@ resolver.define('startRun', async ({ context }) => {
       accountId: context.accountId,
       now: Date.now,
       newId: randomUUID,
+      cap: dailyRunCap(process.env.FW_DAILY_RUN_CAP, console.error),
+      force: payload?.force === true,
     });
   } catch (error) {
     console.error('startRun failed:', error instanceof Error ? error.name : 'Unknown error');

@@ -3,8 +3,9 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { getEvidenceAction, getPremortemAction, runPremortemAction, submitPremortemAction } from '../../src/premortem/actions.js';
+import { getEvidenceAction, getPremortemAction, submitPremortemAction } from '../../src/premortem/actions.js';
 import { handleRun } from '../../src/premortem/consumer.js';
+import { startRun } from '../../src/premortem/run.js';
 import { hiddenEvidenceIds, packForReader, reportForReader } from '../../src/premortem/visibility.js';
 import { keyOf } from '../engine/seed-snapshot.mjs';
 import { fakeKvs, fakeQueue, fakeSenders, idOf, portOf, storedOf } from './fakes.mjs';
@@ -15,11 +16,12 @@ const NOW = Date.parse('2026-11-02T08:00:00.000Z');
 const BLOCKER = keyOf('un-plt-e03-07');
 
 // `accountId` runs the pre-mortem with senders that hide `builderHides`; the reader's senders hide
-// `hidden`. Both share one KVS, like two users of one site.
+// `hidden`. Both share one KVS, like two users of one site. A second run on the unchanged epic is
+// "Run again anyway" (`force`), since a plain start returns the last run (story 009 AC 6–7).
 async function stored(hidden = [], { kvs = fakeKvs(), accountId = 'acc-1', runId = 'r1', builderHides = [] } = {}) {
   const builder = fakeSenders({ hidden: builderHides });
   const deps = { port: portOf(builder.senders), kvs, queue: fakeQueue(kvs), now: () => NOW, newId: () => runId, log: () => {} };
-  await runPremortemAction({ deps, epicKey: EPIC, accountId });
+  assert.equal((await startRun({ ...deps, epicKey: EPIC, accountId, force: true })).status, 'started');
   await handleRun({ event: { body: { runId, epicKey: EPIC, epicId: EPIC_ID, accountId } }, senders: builder.senders, kvs, now: () => NOW, log: () => {} });
   const readerDeps = { ...deps, port: portOf(fakeSenders({ hidden }).senders) };
   return { ...storedOf(kvs, EPIC_ID), deps, readerDeps, kvs };
