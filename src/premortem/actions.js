@@ -8,7 +8,7 @@
 
 import { counted } from '../engine/format.js';
 import { headline, NO_BASE_RATE } from '../frontend/text.js';
-import { citedEvidence, readerLists } from './agent-view.js';
+import { citedEvidence, readerLists, savedReasonList } from './agent-view.js';
 import { notAnEpic, notVisible, readEpic } from './epic.js';
 import { withAgentWriteUp } from './report.js';
 import { isRunInProgress, startRun } from './run.js';
@@ -26,6 +26,11 @@ const callGetEvidence = 'Call get-evidence now; it waits up to 40 seconds for th
 const EVIDENCE_WAIT_MS = 40000;
 const POLL_MS = 2000;
 const STILL_RUNNING = 'Still running. Ask me to continue in a moment.';
+// A run takes seconds, so it often fails before get-evidence first looks. A failure this recent is
+// the run the user just asked for; an older one doesn't block writing on the stored evidence.
+const RECENT_FAILURE_MS = 5 * 60 * 1000;
+const failedRecently = (status, nowMs) => status?.status === 'failed'
+  && nowMs - Date.parse(status.finishedAt ?? status.startedAt ?? 0) < RECENT_FAILURE_MS;
 
 // Story 008 AC 2: one line per drop code on how to fix the reason, so the agent resubmits only
 // what it changed (M3 QA: it resent unchanged reasons).
@@ -76,14 +81,13 @@ export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
   if (error) return { error };
   const waitStart = deps.now();
   let status = await readRunStatus(deps.kvs, epic.id);
-  const waited = isRunInProgress(status, waitStart);
   while (isRunInProgress(status, deps.now())) {
     if (deps.now() - waitStart + POLL_MS > EVIDENCE_WAIT_MS) return { epicKey: epic.key, status: 'running', message: STILL_RUNNING };
     await deps.sleep(POLL_MS);
     status = await readRunStatus(deps.kvs, epic.id);
   }
-  // The user asked for this run, so older evidence would answer the wrong question.
-  if (waited && status?.status === 'failed') return { error: lastRunFailed(status) };
+  // The user just asked for this run, so older evidence would answer the wrong question.
+  if (failedRecently(status, deps.now())) return { error: lastRunFailed(status) };
   const stored = await readPremortem(deps.kvs, epic.id);
   if (!stored) return { error: status?.status === 'failed' ? lastRunFailed(status) : noEvidence(epic.key) };
   return { epicKey: epic.key, ...headlineOf(stored.pack, deps.now()), ...packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack)) };
@@ -117,7 +121,7 @@ export async function submitPremortemAction({ deps, epicKey: requestedKey, accou
   }
   const report = withAgentWriteUp(stored.report, { reasons: kept, droppedByRule, packId: stored.pack.packId, savedBy: accountId, now: deps.now() });
   await writePremortem(deps.kvs, epic.id, { pack: stored.pack, report });
-  return { saved: true, epicKey, savedReasons: kept.length, dropped };
+  return { saved: true, epicKey, savedReasons: kept.length, reasons: savedReasonList(kept), dropped };
 }
 
 const noPremortem = (epicKey) => `No pre-mortem has been saved on ${epicKey} yet.`;

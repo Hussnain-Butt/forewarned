@@ -59,6 +59,15 @@ test('a save with drops gives the agent a full wait again for its fixed resubmis
   assert.equal(checks.at(-1), 50000);
 });
 
+// Final review Important 3: the prompt allows two saves, so a second save with drops buys no more
+// checks.
+test('the second save is the agent\'s last, so the wait ends there', async () => {
+  const { options, shown, checks } = harness(['before', { savedAt: 'first', dropped: 1 }, { savedAt: 'second', dropped: 1 }, 'third']);
+  assert.equal(await followAgentWriteUps(options), true);
+  assert.deepEqual(shown, ['first', 'second']);
+  assert.deepEqual(checks, [5000, 10000, 15000]);
+});
+
 test('with no new write-up, the checks stop at the limit and say nothing arrived', async () => {
   const { options, shown, checks } = harness(['before', null, 'before']);
   assert.equal(await followAgentWriteUps(options), false);

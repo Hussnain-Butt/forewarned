@@ -97,6 +97,20 @@ test('a run that fails while get-evidence waits is reported, not hidden behind t
     { error: 'The last run failed: Jira is busy right now (status 503). Try again in a minute. Ask the user whether to run it again.' });
 });
 
+// Final review Important 2: a run takes about 5 s on the site, so it often fails before get-evidence
+// first looks. A failure in the last 5 minutes is the run the user just asked for; an older one
+// doesn't block writing on the stored evidence.
+test('a run that failed just before get-evidence is reported, an old failure is not', async () => {
+  const { deps, kvs } = await setup();
+  const failed = (at) => ({ runId: 'r2', status: 'failed', startedAt: at, finishedAt: at, error: 'Jira is busy right now (status 503). Try again in a minute.' });
+  await kvs.set(`run:${EPIC_ID}`, failed(new Date(NOW - 5000).toISOString()));
+  assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC }),
+    { error: 'The last run failed: Jira is busy right now (status 503). Try again in a minute. Ask the user whether to run it again.' });
+  assert.equal(deps.clock.slept, 0);
+  await kvs.set(`run:${EPIC_ID}`, failed(new Date(NOW - 60 * 60 * 1000).toISOString()));
+  assert.equal((await getEvidenceAction({ deps, epicKey: EPIC })).packId, storedOf(kvs, EPIC_ID).pack.packId);
+});
+
 test('get-evidence gives the panel\'s headline, and says when launch day is imagined', async () => {
   const { deps, kvs } = await setup();
   const withDue = await getEvidenceAction({ deps, epicKey: EPIC });
@@ -145,6 +159,7 @@ test('submit-premortem validates against the stored pack and saves only validate
   const result = await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1', packId: pack.packId, reasonsJson: JSON.stringify([good(pack), invented, missing]) });
   assert.deepEqual(result, {
     saved: true, epicKey: EPIC, savedReasons: 1,
+    reasons: [{ number: 1, title: 'History says late', likelihood: 'High' }],
     dropped: [
       { title: 'Invented', code: 'unknown-number', notInEvidence: ['99'], fix: 'Use only numbers that appear in the facts this reason cites, copied exactly.' },
       { title: 'Missing evidence', code: 'no-history-evidence', fix: 'Cite at least one evidence ID from get-evidence.' },
@@ -196,6 +211,23 @@ test('submit-premortem checks the reasons against the evidence the submitter can
   const result = await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-2', packId: pack.packId,
     reasonsJson: JSON.stringify([good(pack), { title: 'Blocked', likelihood: 'Medium', explanation: blocker.fact, evidenceIds: [blocker.id], mitigation: 'Chase it.' }]) });
   assert.deepEqual(result.dropped, [{ title: 'Blocked', code: 'no-history-evidence', fix: 'Cite at least one evidence ID from get-evidence.' }]);
+});
+
+// Final review Important 1: the agent lists the saved reasons in its reply, and "reason 3" must mean
+// the same there as in the panel and explain-reason: High first, after the likelihood cap.
+test('submit-premortem lists the saved reasons as the panel numbers them', async () => {
+  const { deps, kvs } = await setup();
+  const { pack } = storedOf(kvs, EPIC_ID);
+  const e9 = pack.evidence.find((e) => e.id === 'E9');
+  const ada = { title: 'Ada is stretched', likelihood: 'Medium', explanation: e9.fact, evidenceIds: ['E9'], mitigation: 'Share the load.' };
+  const capped = { title: 'Ada could slow everything', likelihood: 'High', explanation: e9.fact, evidenceIds: ['E9'], mitigation: 'Share the load early.' };
+  const result = await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1', packId: pack.packId, reasonsJson: JSON.stringify([ada, good(pack), capped]) });
+  assert.deepEqual(result.reasons, [
+    { number: 1, title: 'History says late', likelihood: 'High' },
+    { number: 2, title: 'Ada is stretched', likelihood: 'Medium' },
+    { number: 3, title: 'Ada could slow everything', likelihood: 'Medium' },
+  ]);
+  assert.equal((await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 3 })).reason.title, 'Ada could slow everything');
 });
 
 // M3 QA: the agent resubmitted unchanged reasons; each drop now says what to change (story 008 AC 2).

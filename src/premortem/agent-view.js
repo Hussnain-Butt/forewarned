@@ -22,6 +22,10 @@ export function readerLists(report) {
   };
 }
 
+// The reasons a save kept, numbered and ordered as the panel shows them, so the agent's reply after
+// a save uses the same numbers as the panel and explain-reason.
+export const savedReasonList = (reasons) => numbered(sortByLikelihood(reasons)).map(({ number, title, likelihood }) => ({ number, title, likelihood }));
+
 // The pack's evidence items that the reasons cite, in pack order, with what the agent quotes and
 // links.
 export function citedEvidence(pack, reasons) {

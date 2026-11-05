@@ -5,6 +5,8 @@
 // so it is tested in Node.
 
 const droppedSome = (agent) => Object.values(agent.droppedByRule ?? {}).some((count) => count > 0);
+// The prompt allows the agent one fix after its first save (story 008 AC 2).
+const MAX_SAVES = 2;
 
 // Checks every `pollMs` until `limitMs` after `startedAt`, or after the latest save with drops
 // (reading and confirming Rovo's cards takes the user time); calls `onWriteUp` with the panel data
@@ -12,7 +14,7 @@ const droppedSome = (agent) => Object.values(agent.droppedByRule ?? {}).some((co
 // at least one new write-up arrived.
 export async function followAgentWriteUps({ check, wait, now, startedAt, savedBefore, limitMs, pollMs, onWriteUp }) {
   let lastSeen = savedBefore;
-  let arrived = false;
+  let saves = 0;
   let until = startedAt + limitMs;
   while (now() < until) {
     await wait(pollMs);
@@ -20,11 +22,11 @@ export async function followAgentWriteUps({ check, wait, now, startedAt, savedBe
     const agent = result?.report?.agent;
     if (agent?.savedAt && agent.savedAt !== lastSeen) {
       lastSeen = agent.savedAt;
-      arrived = true;
+      saves += 1;
       onWriteUp(result);
-      if (!droppedSome(agent)) return true;
+      if (!droppedSome(agent) || saves === MAX_SAVES) return true;
       until = now() + limitMs;
     }
   }
-  return arrived;
+  return saves > 0;
 }
