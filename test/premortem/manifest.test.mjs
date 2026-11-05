@@ -61,3 +61,12 @@ test('action descriptions fit Forge, and run-premortem names the cache and the d
   }
   assert.match(actionBlock('run-premortem'), /It reuses the last run if nothing changed in 24 hours and refuses at the daily limit\./);
 });
+
+// Story 008 AC 2 (say "saved" only on saved: true). M8 site QA S2: after the user cancelled the Save
+// card, the agent still said the saved pre-mortem shows in the panel, because that sentence had no
+// condition and the prompt didn't cover a cancelled save.
+test('the prompt points to the panel only after saved: true, and reports a cancelled save as nothing saved', () => {
+  assert.doesNotMatch(manifest, /Then say the saved pre-mortem shows in the Forewarned panel on the epic\./);
+  assert.match(manifest, /If it returned saved: true, say the pre-mortem was saved, [^\r\n]*and say the saved pre-mortem shows in the Forewarned panel on the epic\./);
+  assert.match(manifest, /If it returned saved: false, or the user cancelled the save so it didn't run, say plainly that nothing was saved, and don't say that it shows in the panel\./);
+});
