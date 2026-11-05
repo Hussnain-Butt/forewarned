@@ -68,6 +68,15 @@ test('the second save is the agent\'s last, so the wait ends there', async () =>
   assert.deepEqual(checks, [5000, 10000, 15000]);
 });
 
+// M7 minor: a second click on "Write with Forewarned agent", or the panel going away (opening Rovo
+// remounts it), ends the older wait, so two loops never read the panel data side by side.
+test('a cancelled wait stops checking and shows nothing more', async () => {
+  const { options, shown, checks } = harness(['first']);
+  assert.equal(await followAgentWriteUps({ ...options, cancelled: () => checks.length >= 1 }), false);
+  assert.deepEqual(checks, [5000]);
+  assert.deepEqual(shown, [], 'a save seen after the cancel is not shown');
+});
+
 test('with no new write-up, the checks stop at the limit and say nothing arrived', async () => {
   const { options, shown, checks } = harness(['before', null, 'before']);
   assert.equal(await followAgentWriteUps(options), false);

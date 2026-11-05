@@ -10,15 +10,18 @@ const MAX_SAVES = 2;
 
 // Checks every `pollMs` until `limitMs` after `startedAt`, or after the latest save with drops
 // (reading and confirming Rovo's cards takes the user time); calls `onWriteUp` with the panel data
-// each time the agent's save time changes. A failed check (null) is skipped. Resolves to true when
-// at least one new write-up arrived.
-export async function followAgentWriteUps({ check, wait, now, startedAt, savedBefore, limitMs, pollMs, onWriteUp }) {
+// each time the agent's save time changes. A failed check (null) is skipped. `cancelled` ends the
+// wait at once (a newer wait took over, or the panel went away). Resolves to true when at least one
+// new write-up arrived.
+export async function followAgentWriteUps({ check, wait, now, startedAt, savedBefore, limitMs, pollMs, onWriteUp, cancelled = () => false }) {
   let lastSeen = savedBefore;
   let saves = 0;
   let until = startedAt + limitMs;
   while (now() < until) {
     await wait(pollMs);
+    if (cancelled()) break;
     const result = await check();
+    if (cancelled()) break;
     const agent = result?.report?.agent;
     if (agent?.savedAt && agent.savedAt !== lastSeen) {
       lastSeen = agent.savedAt;

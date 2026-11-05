@@ -45,6 +45,8 @@ const App = () => {
   // after a Check again that found nothing new.
   const [agentWait, setAgentWait] = useState(null);
   const [agentReady, setAgentReady] = useState(false);
+  // Counts the waits for the agent; only the latest one keeps checking (see waitForAgent).
+  const agentWaits = useRef(0);
   const [tab, setTab] = useState(AGENT_TAB);
   const tabRef = useRef(AGENT_TAB);
   const selectTab = (index) => {
@@ -138,8 +140,13 @@ const App = () => {
   // agent's fixed resubmission (story 008) replaces it too.
   const waitForAgent = async (savedBefore, hadCurrentAgent, startedAt) => {
     setAgentWait('waiting');
+    // A newer wait (another click) or the panel going away ends this one.
+    agentWaits.current += 1;
+    const thisWait = agentWaits.current;
+    const cancelled = () => agentWaits.current !== thisWait;
     let hadAgent = hadCurrentAgent;
     const arrived = await followAgentWriteUps({
+      cancelled,
       check: () => invoke('getPanel').catch(() => null),
       wait,
       now: Date.now,
@@ -152,7 +159,7 @@ const App = () => {
         hadAgent = hasCurrentAgent(result);
       },
     });
-    if (!arrived) setAgentWait('expired');
+    if (!arrived && !cancelled()) setAgentWait('expired');
   };
 
   const checkAgainForAgent = async () => {
@@ -229,6 +236,10 @@ const App = () => {
       }
     }).catch(() => {});
   }, []);
+
+  // Opening Rovo remounts the panel; the old copy's wait for the agent stops instead of reading
+  // the panel data for nobody (each check counts against the KVS allowance, story 009).
+  useEffect(() => () => { agentWaits.current += 1; }, []);
 
   if (!panel) return <Spinner label="Loading the pre-mortem" />;
   if (panel.error) {
