@@ -6,7 +6,9 @@
 // reads the epic as the user: someone who can't see it learns nothing, not even whether a run is
 // in progress.
 
-import { headline } from '../frontend/text.js';
+import { counted } from '../engine/format.js';
+import { headline, NO_BASE_RATE } from '../frontend/text.js';
+import { citedEvidence, readerLists } from './agent-view.js';
 import { notAnEpic, notVisible, readEpic } from './epic.js';
 import { withAgentWriteUp } from './report.js';
 import { isRunInProgress, startRun } from './run.js';
@@ -118,12 +120,90 @@ export async function submitPremortemAction({ deps, epicKey: requestedKey, accou
   return { saved: true, epicKey, savedReasons: kept.length, dropped };
 }
 
-// get-premortem (and the panel): the stored version 2 report, without the reasons built on
-// evidence the reader can't see (story 002 AC 2).
-export async function getPremortemAction({ deps, epicKey: requestedKey }) {
+const noPremortem = (epicKey) => `No pre-mortem has been saved on ${epicKey} yet.`;
+// The panel's notes (story 005), so chat and panel say the same.
+const STALE_NOTE = "The agent's write-up is based on an earlier run. Ask the agent again to update it.";
+const HIDDEN_REASONS_NOTE = "Some reasons are hidden because they name work items you can't see or that no longer exist.";
+const LIST_NAMES = { agent: 'agent write-up', 'rule-based': 'rule-based pre-mortem' };
+
+// The stored pack and report without what the reader can't see (story 002 AC 2), or `stored: false`.
+async function readerPremortem(deps, requestedKey) {
   const { epic, error } = await epicFor(deps.port, requestedKey);
   if (error) return { error };
   const stored = await readPremortem(deps.kvs, epic.id);
-  if (!stored) return { epicKey: epic.key, report: null, message: `No pre-mortem has been saved on ${epic.key} yet.` };
-  return { epicKey: epic.key, report: reportForReader(stored.report, await hiddenEvidenceIds(deps.port, stored.pack)) };
+  if (!stored) return { epic, stored: false };
+  const hidden = await hiddenEvidenceIds(deps.port, stored.pack);
+  return { epic, stored: true, pack: packForReader(stored.pack, hidden), report: reportForReader(stored.report, hidden) };
+}
+
+// get-premortem (story 008 AC 4, 11): the headline, both lists of reasons numbered as the panel
+// numbers them, the facts they cite and when the run was. Who ran or saved it stays out.
+export async function getPremortemAction({ deps, epicKey: requestedKey }) {
+  const { epic, error, stored, pack, report } = await readerPremortem(deps, requestedKey);
+  if (error) return { error };
+  if (!stored) return { epicKey: epic.key, message: noPremortem(epic.key) };
+  const lists = readerLists(report);
+  let agentWriteUp = null;
+  if (lists.agentStale) agentWriteUp = { stale: true, note: STALE_NOTE };
+  else if (lists.agent) agentWriteUp = { savedAt: report.agent.savedAt, reasons: lists.agent, droppedByRule: report.agent.droppedByRule };
+  return {
+    epicKey: epic.key,
+    ...headlineOf(pack, deps.now()),
+    runAt: report.runAt,
+    status: report.status,
+    shownFirst: lists.shownFirst,
+    agentWriteUp,
+    ruleBased: { reasons: lists.ruleBased },
+    evidence: citedEvidence(pack, [...(lists.agent ?? []), ...lists.ruleBased]),
+    ...(report.hiddenForReader ? { notes: [HIDDEN_REASONS_NOTE] } : {}),
+  };
+}
+
+// The agent fills reasonNumber from the chat: a whole number 1–5, also as digits in a string.
+function reasonNumberOf(value) {
+  let number = NaN;
+  if (typeof value === 'number') number = value;
+  else if (typeof value === 'string' && /^\s*\d+\s*$/.test(value)) number = Number(value);
+  return Number.isInteger(number) && number >= 1 && number <= 5 ? number : null;
+}
+
+// "agent" or "rule-based" in any letter case, with spaces or underscores for the dash; none given
+// means the list the panel shows first.
+function sourceOf(value) {
+  const text = typeof value === 'string' ? value.trim().toLowerCase().replace(/[\s_]+/g, '-') : '';
+  if (!text) return { source: null };
+  return LIST_NAMES[text] ? { source: text } : { error: 'source must be "agent" or "rule-based".' };
+}
+
+// explain-reason (story 008 AC 4, 10): one numbered reason with every fact it cites in full, so the
+// agent explains it from the evidence only. Inputs are checked before anything is read.
+export async function explainReasonAction({ deps, epicKey: requestedKey, reasonNumber, source: requestedSource }) {
+  const number = reasonNumberOf(reasonNumber);
+  if (!number) return { error: 'reasonNumber must be a whole number from 1 to 5.' };
+  const asked = sourceOf(requestedSource);
+  if (asked.error) return { error: asked.error };
+  const { epic, error, stored, pack, report } = await readerPremortem(deps, requestedKey);
+  if (error) return { error };
+  if (!stored) return { error: noPremortem(epic.key) };
+  const lists = readerLists(report);
+  const source = asked.source ?? lists.shownFirst;
+  if (source === 'agent' && lists.agentStale) {
+    return { error: `The agent's write-up on ${epic.key} is based on an earlier run. Ask me to write the pre-mortem again, or ask about a rule-based reason.` };
+  }
+  if (source === 'agent' && !lists.agent) {
+    return { error: `${epic.key} has no write-up from the Forewarned agent yet. Ask about a rule-based reason, or ask me to write the pre-mortem.` };
+  }
+  const reasons = source === 'agent' ? lists.agent : lists.ruleBased;
+  const listed = reasons[number - 1];
+  if (!listed) return { error: `The ${LIST_NAMES[source]} for ${epic.key} has ${counted(reasons.length, 'reason')}, so there is no reason ${number}.` };
+  const { title, likelihood, explanation, evidenceIds, mitigation } = listed;
+  const evidence = citedEvidence(pack, [listed]);
+  return {
+    epicKey: epic.key,
+    source,
+    number,
+    reason: { title, likelihood, explanation, evidenceIds, mitigation },
+    evidence,
+    ...(evidence.some((item) => item.baseRate) ? {} : { baseRateNote: NO_BASE_RATE }),
+  };
 }

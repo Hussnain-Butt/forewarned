@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { getEvidenceAction, getPremortemAction, runPremortemAction, submitPremortemAction } from '../../src/premortem/actions.js';
+import { explainReasonAction, getEvidenceAction, getPremortemAction, runPremortemAction, submitPremortemAction } from '../../src/premortem/actions.js';
 import { handleRun } from '../../src/premortem/consumer.js';
 import { keyOf } from '../engine/seed-snapshot.mjs';
 import { fakeKvs, fakeQueue, fakeSenders, idOf, portOf, storedOf } from './fakes.mjs';
@@ -123,6 +123,7 @@ test('every action refuses an epic the user can\'t see, before reading anything 
   await deps.kvs.set(`run:${EPIC_ID}`, { runId: 'r2', status: 'running', startedAt: new Date(NOW).toISOString() });
   assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC }), NOT_VISIBLE);
   assert.deepEqual(await getPremortemAction({ deps, epicKey: EPIC }), NOT_VISIBLE);
+  assert.deepEqual(await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1 }), NOT_VISIBLE);
   assert.deepEqual(await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-2', reasonsJson: '[]' }), { saved: false, ...NOT_VISIBLE });
 });
 
@@ -132,6 +133,7 @@ test('the Rovo actions refuse a work item that isn\'t an epic', async () => {
   const notEpic = `${story} is not an epic. Forewarned runs pre-mortems on epics only.`;
   assert.deepEqual(await getEvidenceAction({ deps, epicKey: story }), { error: notEpic });
   assert.deepEqual(await getPremortemAction({ deps, epicKey: story }), { error: notEpic });
+  assert.deepEqual(await explainReasonAction({ deps, epicKey: story, reasonNumber: 1 }), { error: notEpic });
   assert.deepEqual(await submitPremortemAction({ deps, epicKey: story, accountId: 'acc-1', reasonsJson: '[]' }), { saved: false, error: notEpic });
 });
 
@@ -219,9 +221,119 @@ test('every dropped reason says how to fix it', async () => {
   ]);
 });
 
-test('get-premortem returns the version 2 report, or says none is saved yet', async () => {
+// Story 008 AC 4, 10–11: what get-premortem and explain-reason give the agent. The rule-based
+// reasons of the seeded epic, in stored order, are the ones the panel numbers 1–5.
+const RULE_TITLES = [
+  'PLT work could block Checkout v2 launch again',
+  'Epics like this one usually finish late',
+  'The plan is shorter than comparable epics took',
+  'Scope will keep growing after the plan is set',
+  "Ada Isadora's workload could slow Checkout v2 launch",
+];
+const NO_PREMORTEM = `No pre-mortem has been saved on ${EPIC} yet.`;
+
+// Saves an agent write-up of a Medium reason (E9, no base rate) before a High one (the slip base rate).
+async function saveWriteUp(deps, kvs) {
+  const { pack } = storedOf(kvs, EPIC_ID);
+  const e9 = pack.evidence.find((e) => e.id === 'E9');
+  const ada = { title: 'Ada is stretched', likelihood: 'Medium', explanation: e9.fact, evidenceIds: ['E9'], mitigation: 'Share the load.' };
+  const saved = await submitPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1', packId: pack.packId, reasonsJson: JSON.stringify([ada, good(pack)]) });
+  assert.equal(saved.savedReasons, 2);
+  return { pack, e9, slip: pack.evidence.find((e) => e.type === 'slip-base-rate') };
+}
+
+test('get-premortem says when none is saved yet', async () => {
+  const { deps } = await setup({ withRun: false });
+  assert.deepEqual(await getPremortemAction({ deps, epicKey: EPIC }), { epicKey: EPIC, message: NO_PREMORTEM });
+  assert.deepEqual(await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1 }), { error: NO_PREMORTEM });
+});
+
+test('get-premortem numbers the reasons as the panel does and gives their cited facts', async () => {
   const { deps, kvs } = await setup();
-  assert.deepEqual(await getPremortemAction({ deps, epicKey: EPIC }), { epicKey: EPIC, report: storedOf(kvs, EPIC_ID).report });
-  const empty = await setup({ withRun: false });
-  assert.deepEqual(await getPremortemAction({ deps: empty.deps, epicKey: EPIC }), { epicKey: EPIC, report: null, message: `No pre-mortem has been saved on ${EPIC} yet.` });
+  const { pack, e9 } = await saveWriteUp(deps, kvs);
+  const { report } = storedOf(kvs, EPIC_ID);
+  const result = await getPremortemAction({ deps, epicKey: EPIC });
+  assert.equal(result.epicKey, EPIC);
+  assert.equal(result.headline, HEADLINE);
+  assert.equal(result.runAt, report.runAt);
+  assert.equal(result.status, 'ok');
+  assert.equal(result.shownFirst, 'agent');
+  assert.equal(result.agentWriteUp.savedAt, report.agent.savedAt);
+  assert.deepEqual(result.agentWriteUp.reasons.map((r) => [r.number, r.title, r.likelihood]), [[1, 'History says late', 'High'], [2, 'Ada is stretched', 'Medium']]);
+  assert.deepEqual(result.ruleBased.reasons.map((r) => [r.number, r.title]), RULE_TITLES.map((title, i) => [i + 1, title]));
+  const cited = new Set([...report.agent.reasons, ...report.ruleBased.reasons].flatMap((r) => r.evidenceIds));
+  assert.deepEqual(result.evidence.map((e) => e.id), pack.evidence.filter((e) => cited.has(e.id)).map((e) => e.id));
+  assert.deepEqual(result.evidence.find((e) => e.id === 'E9'), { id: 'E9', fact: e9.fact, baseRate: false, links: e9.links });
+  assert.doesNotMatch(JSON.stringify(result), /ruleId|fingerprint|runBy|savedBy|acc-1/);
+});
+
+test('explain-reason returns the reason and every fact it cites, with links', async () => {
+  const { deps, kvs } = await setup();
+  const { slip } = await saveWriteUp(deps, kvs);
+  assert.deepEqual(await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1 }), {
+    epicKey: EPIC,
+    source: 'agent',
+    number: 1,
+    reason: { title: 'History says late', likelihood: 'High', explanation: slip.fact, evidenceIds: [slip.id], mitigation: `Plan for ${slip.numbers.medianDaysLate} more days.` },
+    evidence: [{ id: slip.id, fact: slip.fact, baseRate: true, links: slip.links }],
+  });
+  const second = await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 2 });
+  assert.equal(second.reason.title, 'Ada is stretched');
+  assert.equal(second.baseRateNote, 'No base rate in this history, so likelihood is capped at Medium.');
+});
+
+test('explain-reason uses the rule-based list when asked or when there is no current write-up', async () => {
+  const { deps, kvs } = await setup();
+  const first = await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1 });
+  assert.equal(first.source, 'rule-based');
+  assert.equal(first.reason.title, RULE_TITLES[0]);
+  assert.deepEqual(first.evidence.map((e) => e.id), ['E15', 'E16', 'E17']);
+  await saveWriteUp(deps, kvs);
+  const asked = await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 2, source: 'rule-based' });
+  assert.equal(asked.source, 'rule-based');
+  assert.equal(asked.reason.title, RULE_TITLES[1]);
+});
+
+// Review Focus 4: the write-up's evidence IDs point at another pack, so its reasons can't be explained.
+test('explain-reason and get-premortem say when the write-up is from an earlier run', async () => {
+  const { deps, kvs } = await setup();
+  assert.deepEqual(await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1, source: 'agent' }),
+    { error: `${EPIC} has no write-up from the Forewarned agent yet. Ask about a rule-based reason, or ask me to write the pre-mortem.` });
+  await saveWriteUp(deps, kvs);
+  const stored = storedOf(kvs, EPIC_ID);
+  await kvs.set(`premortem:${EPIC_ID}`, { ...stored, report: { ...stored.report, agent: { ...stored.report.agent, packId: 'old' } } });
+  const shown = await getPremortemAction({ deps, epicKey: EPIC });
+  assert.deepEqual(shown.agentWriteUp, { stale: true, note: "The agent's write-up is based on an earlier run. Ask the agent again to update it." });
+  assert.equal(shown.shownFirst, 'rule-based');
+  assert.deepEqual(await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1, source: 'agent' }),
+    { error: `The agent's write-up on ${EPIC} is based on an earlier run. Ask me to write the pre-mortem again, or ask about a rule-based reason.` });
+  assert.equal((await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1 })).source, 'rule-based');
+});
+
+// Review Focus 2: the agent fills these inputs from the chat.
+test('explain-reason explains wrong numbers and sources plainly', async () => {
+  const { deps, kvs } = await setup();
+  await saveWriteUp(deps, kvs);
+  const explain = (fields) => explainReasonAction({ deps, epicKey: EPIC, ...fields });
+  assert.equal((await explain({ reasonNumber: '2' })).number, 2);
+  for (const bad of [0, 6, 2.5, 'two', true, '', null, undefined]) {
+    assert.deepEqual(await explain({ reasonNumber: bad }), { error: 'reasonNumber must be a whole number from 1 to 5.' }, String(bad));
+  }
+  assert.equal((await explain({ reasonNumber: 1, source: 'Rule based' })).source, 'rule-based');
+  assert.equal((await explain({ reasonNumber: 1, source: ' ' })).source, 'agent');
+  assert.deepEqual(await explain({ reasonNumber: 1, source: 'ai' }), { error: 'source must be "agent" or "rule-based".' });
+  assert.deepEqual(await explain({ reasonNumber: 3, source: 'agent' }), { error: `The agent write-up for ${EPIC} has 2 reasons, so there is no reason 3.` });
+});
+
+// Review Focus 3: the reader's numbering matches their own panel, and nothing hidden comes back.
+test('explain-reason keeps hidden evidence out and numbers reasons as the reader sees them', async () => {
+  const { deps } = await setup({ senderOptions: { hidden: [BLOCKER] } });
+  const premortem = await getPremortemAction({ deps, epicKey: EPIC });
+  assert.deepEqual(premortem.ruleBased.reasons.map((r) => [r.number, r.title]), RULE_TITLES.slice(1).map((title, i) => [i + 1, title]));
+  assert.deepEqual(premortem.notes, ["Some reasons are hidden because they name work items you can't see or that no longer exist."]);
+  assert.equal(premortem.evidence.some((e) => e.id === 'E15'), false);
+  const first = await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1 });
+  assert.equal(first.reason.title, RULE_TITLES[1]);
+  assert.deepEqual(await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 5 }),
+    { error: `The rule-based pre-mortem for ${EPIC} has 4 reasons, so there is no reason 5.` });
 });

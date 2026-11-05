@@ -7,7 +7,8 @@ import { cut } from '../premortem/validator.js';
 const HOUR_MS = 3600000;
 const DAY_MS = 24 * HOUR_MS;
 const CHIP_SUMMARY_CHARS = 30;
-const NO_BASE_RATE = 'No base rate in this history, so likelihood is capped at Medium.';
+// The agent's explain-reason answer uses it too (story 008).
+export const NO_BASE_RATE = 'No base rate in this history, so likelihood is capped at Medium.';
 const RANK = { High: 0, Medium: 1, Low: 2 };
 
 const day = (iso) => formatDay(dayOf(iso));

@@ -28,8 +28,9 @@ async function stored(hidden = [], { kvs = fakeKvs(), accountId = 'acc-1', runId
 // Access can be taken away after a run, so the builder gets no shortcut past the check.
 test('the builder is checked too: after losing access to a blocker they no longer see it', async () => {
   const { pack, readerDeps } = await stored([BLOCKER]);
-  const { report } = await getPremortemAction({ deps: readerDeps, epicKey: EPIC });
-  assert.ok(pack.builtFor === 'acc-1' && !JSON.stringify(report).includes(BLOCKER));
+  const premortem = await getPremortemAction({ deps: readerDeps, epicKey: EPIC });
+  assert.ok(premortem.ruleBased.reasons.length >= 4);
+  assert.ok(pack.builtFor === 'acc-1' && !JSON.stringify(premortem).includes(BLOCKER));
   // Even when asked with the builder's own account ID, no shortcut skips the check.
   assert.ok((await hiddenEvidenceIds(readerDeps.port, pack, 'acc-1')).has(pack.evidence.find((e) => e.type === 'open-blocker').id));
 });
@@ -61,8 +62,9 @@ test('get-evidence and get-premortem answer each reader with what they may see',
   const { deps, readerDeps } = await stored([BLOCKER]);
   const evidence = await getEvidenceAction({ deps: readerDeps, epicKey: EPIC });
   assert.ok(!JSON.stringify(evidence).includes(BLOCKER));
-  const { report } = await getPremortemAction({ deps: readerDeps, epicKey: EPIC });
-  assert.ok(!JSON.stringify(report).includes(BLOCKER));
+  const premortem = await getPremortemAction({ deps: readerDeps, epicKey: EPIC });
+  assert.ok(premortem.ruleBased.reasons.length >= 4);
+  assert.ok(!JSON.stringify(premortem).includes(BLOCKER));
   const own = await getEvidenceAction({ deps, epicKey: EPIC });
   assert.ok(JSON.stringify(own).includes(BLOCKER));
 });
@@ -87,8 +89,7 @@ test('a stale agent write-up shows no reasons to any reader, the new builder inc
   const second = await stored([BLOCKER], { kvs, accountId: 'acc-2', runId: 'r2', builderHides: [BLOCKER] });
   assert.notEqual(second.pack.packId, first.pack.packId);
   // The new builder (acc-2), and anyone else, who can't see the blocker.
-  const { report } = await getPremortemAction({ deps: second.readerDeps, epicKey: EPIC });
-  assert.ok(!JSON.stringify(report).includes(BLOCKER));
-  assert.deepEqual(report.agent.reasons, []);
-  assert.equal(report.agent.stale, true);
+  const premortem = await getPremortemAction({ deps: second.readerDeps, epicKey: EPIC });
+  assert.ok(!JSON.stringify(premortem).includes(BLOCKER));
+  assert.deepEqual(premortem.agentWriteUp, { stale: true, note: "The agent's write-up is based on an earlier run. Ask the agent again to update it." });
 });
