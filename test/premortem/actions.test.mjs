@@ -66,7 +66,28 @@ test('get-evidence returns the stored pack, or explains why there is none', asyn
   await runPremortemAction({ deps: empty.deps, epicKey: EPIC, accountId: 'acc-1' });
   assert.deepEqual(await getEvidenceAction({ deps: empty.deps, epicKey: EPIC }), STILL_RUNNING);
   const { deps, kvs } = await setup();
-  assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC }), { epicKey: EPIC, headline: HEADLINE, ...storedOf(kvs, EPIC_ID).pack });
+  const { pack, report } = storedOf(kvs, EPIC_ID);
+  assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC }), { epicKey: EPIC, headline: HEADLINE, runAt: report.runAt, ...pack });
+});
+
+// M7 minor: reused evidence can be days old, so the agent can say when it was built.
+test('get-evidence says when its evidence was built', async () => {
+  const { deps, kvs } = await setup();
+  assert.equal((await getEvidenceAction({ deps, epicKey: EPIC })).runAt, '2026-11-02T08:00:00.000Z');
+  assert.equal(storedOf(kvs, EPIC_ID).report.runAt, '2026-11-02T08:00:00.000Z');
+});
+
+// M7 minor: a slow epic read eats into Rovo's 55 s, so the 40 s count from the start of the action.
+test('get-evidence counts its 40 seconds from the start of the action', async () => {
+  const { deps, kvs } = await setup();
+  await kvs.set(`run:${EPIC_ID}`, { runId: 'r2', status: 'running', startedAt: new Date(NOW).toISOString() });
+  const readIssue = deps.port.issue;
+  deps.port.issue = async (...args) => {
+    deps.clock.now += 5000;
+    return readIssue(...args);
+  };
+  assert.deepEqual(await getEvidenceAction({ deps, epicKey: EPIC }), STILL_RUNNING);
+  assert.ok(deps.clock.slept <= 35000, `slept ${deps.clock.slept} ms`);
 });
 
 // Story 008 AC 4, 7: "Run a pre-mortem on ‹KEY›" works in one turn from chat.
@@ -339,7 +360,23 @@ test('explain-reason and get-premortem say when the write-up is from an earlier 
   assert.equal(shown.shownFirst, 'rule-based');
   assert.deepEqual(await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1, source: 'agent' }),
     { error: `The agent's write-up on ${EPIC} is based on an earlier run. Ask me to write the pre-mortem again, or ask about a rule-based reason.` });
-  assert.equal((await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1 })).source, 'rule-based');
+  // M7 minor: asked without a list, the agent learns why the answer comes from the rule-based one.
+  const fallback = await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1 });
+  assert.equal(fallback.source, 'rule-based');
+  assert.equal(fallback.note, `The agent's write-up on ${EPIC} is based on an earlier run, so this is a rule-based reason.`);
+});
+
+// M7 minor: "has 0 reasons" didn't say why.
+test('explain-reason says when every agent reason is hidden from the reader', async () => {
+  const { deps, kvs } = await setup({ senderOptions: { hidden: [BLOCKER] } });
+  const { pack } = storedOf(kvs, EPIC_ID);
+  const blocker = pack.evidence.find((e) => e.type === 'open-blocker');
+  const builder = { ...deps, port: portOf(fakeSenders().senders) };
+  const saved = await submitPremortemAction({ deps: builder, epicKey: EPIC, accountId: 'acc-1', packId: pack.packId,
+    reasonsJson: JSON.stringify([{ title: 'Blocked', likelihood: 'Medium', explanation: blocker.fact, evidenceIds: [blocker.id], mitigation: 'Chase it.' }]) });
+  assert.equal(saved.saved, true);
+  assert.deepEqual(await explainReasonAction({ deps, epicKey: EPIC, reasonNumber: 1, source: 'agent' }),
+    { error: `The agent write-up for ${EPIC} has no reasons you can see: they name work items you can't see or that no longer exist.` });
 });
 
 // Review Focus 2: the agent fills these inputs from the chat.

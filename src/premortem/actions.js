@@ -73,13 +73,14 @@ export async function runPremortemAction({ deps, epicKey, accountId }) {
 }
 
 // get-evidence: the stored pack, so the agent cites exactly what submit-premortem checks against,
-// without the evidence the reader can't see (story 002 AC 2), plus the panel's headline. A run in
-// progress is waited for (story 008 AC 4, 7). With no pack, or when the run it waited for failed,
-// the failure says why, so the agent can tell the user before it tries again.
+// without the evidence the reader can't see (story 002 AC 2), plus the panel's headline and when
+// the run was. A run in progress is waited for (story 008 AC 4, 7), counted from the start of the
+// action so a slow epic read still leaves room in Rovo's 55 s. With no pack, or when the run it
+// waited for failed, the failure says why, so the agent can tell the user before it tries again.
 export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
+  const waitStart = deps.now();
   const { epic, error } = await epicFor(deps.port, requestedKey);
   if (error) return { error };
-  const waitStart = deps.now();
   let status = await readRunStatus(deps.kvs, epic.id);
   while (isRunInProgress(status, deps.now())) {
     if (deps.now() - waitStart + POLL_MS > EVIDENCE_WAIT_MS) return { epicKey: epic.key, status: 'running', message: STILL_RUNNING };
@@ -90,7 +91,8 @@ export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
   if (failedRecently(status, deps.now())) return { error: lastRunFailed(status) };
   const stored = await readPremortem(deps.kvs, epic.id);
   if (!stored) return { error: status?.status === 'failed' ? lastRunFailed(status) : noEvidence(epic.key) };
-  return { epicKey: epic.key, ...headlineOf(stored.pack, deps.now()), ...packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack)) };
+  const pack = packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack));
+  return { epicKey: epic.key, ...headlineOf(stored.pack, deps.now()), runAt: stored.report.runAt, ...pack };
 }
 
 // submit-premortem: validates the agent's reasons against the part of the stored pack the user can
@@ -113,8 +115,8 @@ export async function submitPremortemAction({ deps, epicKey: requestedKey, accou
   }
 
   const visiblePack = packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack));
-  const { kept, droppedByRule, ...validated } = validateReasons(parsed.reasons, visiblePack);
-  const dropped = validated.dropped.map((drop) => ({ ...drop, fix: DROP_FIXES[drop.code] }));
+  const { kept, droppedByRule, dropped: drops } = validateReasons(parsed.reasons, visiblePack);
+  const dropped = drops.map((drop) => ({ ...drop, fix: DROP_FIXES[drop.code] }));
   for (const { code } of dropped) deps.log(`Reason dropped: ${code}`);
   if (!kept.length) {
     return { saved: false, error: 'No reason checked out against the evidence, so nothing was saved.', dropped };
@@ -198,6 +200,10 @@ export async function explainReasonAction({ deps, epicKey: requestedKey, reasonN
     return { error: `${epic.key} has no write-up from the Forewarned agent yet. Ask about a rule-based reason, or ask me to write the pre-mortem.` };
   }
   const reasons = source === 'agent' ? lists.agent : lists.ruleBased;
+  // A list the reader filter emptied says why, instead of "has 0 reasons".
+  if (!reasons.length && report.hiddenForReader) {
+    return { error: `The ${LIST_NAMES[source]} for ${epic.key} has no reasons you can see: they name work items you can't see or that no longer exist.` };
+  }
   const listed = reasons[number - 1];
   if (!listed) return { error: `The ${LIST_NAMES[source]} for ${epic.key} has ${counted(reasons.length, 'reason')}, so there is no reason ${number}.` };
   const { title, likelihood, explanation, evidenceIds, mitigation } = listed;
@@ -209,5 +215,7 @@ export async function explainReasonAction({ deps, epicKey: requestedKey, reasonN
     reason: { title, likelihood, explanation, evidenceIds, mitigation },
     evidence,
     ...(evidence.some((item) => item.baseRate) ? {} : { baseRateNote: NO_BASE_RATE }),
+    // Asked without a list, the agent learns why a rule-based reason answers.
+    ...(!asked.source && lists.agentStale ? { note: `The agent's write-up on ${epic.key} is based on an earlier run, so this is a rule-based reason.` } : {}),
   };
 }
