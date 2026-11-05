@@ -87,10 +87,14 @@ function check(input, byId, epic, keep) {
   // AC 12–13: every number and key in the reason must come from what it cites. The epic itself
   // (its key and summary) is the subject of the whole pack, so it is always known.
   const sources = [epic?.summary, ...cited.flatMap((item) => [item.fact, ...(item.links ?? []).map((l) => l.summary)])];
+  // A drop names the reason's own numbers or keys that its cited evidence lacks (story 008), so the
+  // agent can fix exactly those.
   const knownNumbers = new Set(sources.flatMap((s) => [...numbersIn(s)]));
-  if ([...numbersIn(written)].some((n) => !knownNumbers.has(n))) return { code: 'unknown-number', title };
+  const unknownNumbers = [...numbersIn(written)].filter((n) => !knownNumbers.has(n));
+  if (unknownNumbers.length) return { code: 'unknown-number', title, notInEvidence: unknownNumbers };
   const knownKeys = new Set([epic?.key, ...keysIn(epic?.summary), ...cited.flatMap((item) => [...keysIn(item.fact), ...(item.links ?? []).map((l) => l.key)])]);
-  if ([...keysIn(written)].some((k) => !knownKeys.has(k))) return { code: 'unknown-key', title };
+  const unknownKeys = [...keysIn(written)].filter((k) => !knownKeys.has(k));
+  if (unknownKeys.length) return { code: 'unknown-key', title, notInEvidence: unknownKeys };
   const knownLinks = knownLinksIn(sources.join(' '));
   if (linksIn(written).some((link) => !knownLinks.has(link))) return { code: 'link', title };
 
@@ -115,7 +119,7 @@ export function validateReasons(reasons, pack, { keep = [] } = {}) {
     if (!code && titles.has(result.reason.title.toLowerCase())) code = 'duplicate';
     if (!code && kept.length === MAX_KEPT) code = 'over-five';
     if (code) {
-      dropped.push({ title: result.title ?? result.reason.title, code });
+      dropped.push({ title: result.title ?? result.reason.title, code, ...(result.notInEvidence ? { notInEvidence: result.notInEvidence } : {}) });
     } else {
       kept.push(result.reason);
       titles.add(result.reason.title.toLowerCase());

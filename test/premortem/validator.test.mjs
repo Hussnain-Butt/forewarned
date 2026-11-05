@@ -77,6 +77,16 @@ test('numbersIn and keysIn read only real quantities and real keys', () => {
   assert.deepEqual([...keysIn('Ask PLT-31 and CHK-143 about E3 and v2')].sort(), ['CHK-143', 'PLT-31']);
 });
 
+// Story 008 site finding F3: told only "unknown-number", the agent guessed which number failed and
+// resubmitted three times. The drop names its own numbers or keys that the cited evidence lacks;
+// it is the agent's own text, checked against evidence it can see, so nothing hidden leaks.
+test('a dropped reason names the numbers or keys its cited evidence lacks', () => {
+  assert.deepEqual(one(reason({ explanation: 'Comparable epics were about 40 days late, 3 weeks more than CHK-7.', evidenceIds: ['E2'], likelihood: 'Medium', mitigation: 'Add 5,000 days.' })).dropped,
+    [{ title: 'Epics like this one usually finish late', code: 'unknown-number', notInEvidence: ['40', '3', '5000'] }]);
+  assert.deepEqual(one(reason({ explanation: 'CHK-99 and PLT-5 finished 42 days late.', evidenceIds: ['E2'], likelihood: 'Medium', mitigation: 'Add buffer.' })).dropped,
+    [{ title: 'Epics like this one usually finish late', code: 'unknown-key', notInEvidence: ['CHK-99', 'PLT-5'] }]);
+});
+
 test('keys rule: every work item key must be in the cited facts or links (AC 13)', () => {
   assert.ok(keptOne(reason({ explanation: 'CHK-7 finished 42 days late.', evidenceIds: ['E2'], likelihood: 'Medium', mitigation: 'Learn from CHK-7.' })));
   assert.equal(droppedCode(reason({ explanation: 'CHK-99 finished 42 days late.', evidenceIds: ['E2'], likelihood: 'Medium', mitigation: 'Add buffer.' })), 'unknown-key');

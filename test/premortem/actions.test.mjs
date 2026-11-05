@@ -146,7 +146,7 @@ test('submit-premortem validates against the stored pack and saves only validate
   assert.deepEqual(result, {
     saved: true, epicKey: EPIC, savedReasons: 1,
     dropped: [
-      { title: 'Invented', code: 'unknown-number', fix: 'Use only numbers that appear in the facts this reason cites, copied exactly.' },
+      { title: 'Invented', code: 'unknown-number', notInEvidence: ['99'], fix: 'Use only numbers that appear in the facts this reason cites, copied exactly.' },
       { title: 'Missing evidence', code: 'no-history-evidence', fix: 'Cite at least one evidence ID from get-evidence.' },
     ],
   });
