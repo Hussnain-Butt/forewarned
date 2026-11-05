@@ -37,6 +37,16 @@ test('the panel keeps following the agent after its first save, so a resubmissio
   assert.deepEqual(shown, ['first', 'second']);
 });
 
+// Site check of F1: reading and confirming two Rovo cards took about 3 minutes, so the fixed save
+// landed after a wait counted from the click. Each new save gives the agent a full wait again.
+test('each new write-up gives the agent a full wait again for its fixed resubmission', async () => {
+  // Checks at 5, 10, …: the first save shows at 25 s, the second at 50 s (after the first 30 s).
+  const { options, shown, checks } = harness(['before', 'before', 'before', 'before', 'first', 'first', 'first', 'first', 'first', 'second']);
+  assert.equal(await followAgentWriteUps(options), true);
+  assert.deepEqual(shown, ['first', 'second']);
+  assert.equal(checks.at(-1), 80000, 'checks end 30 s after the last new save');
+});
+
 test('with no new write-up, the checks stop at the limit and say nothing arrived', async () => {
   const { options, shown, checks } = harness(['before', null, 'before']);
   assert.equal(await followAgentWriteUps(options), false);
