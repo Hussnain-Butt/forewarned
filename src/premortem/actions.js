@@ -6,6 +6,7 @@
 // reads the epic as the user: someone who can't see it learns nothing, not even whether a run is
 // in progress.
 
+import { headline } from '../frontend/text.js';
 import { notAnEpic, notVisible, readEpic } from './epic.js';
 import { withAgentWriteUp } from './report.js';
 import { isRunInProgress, startRun } from './run.js';
@@ -15,6 +16,36 @@ import { hiddenEvidenceIds, packForReader, reportForReader } from './visibility.
 
 const IN_PROGRESS = 'A new evidence run is in progress. Wait a moment, then call get-evidence again.';
 const noEvidence = (epicKey) => `No evidence found for ${epicKey}. Call run-premortem first.`;
+const lastRunFailed = (status) => `The last run failed: ${status.error} Ask the user whether to run it again.`;
+const callGetEvidence = 'Call get-evidence now; it waits up to 40 seconds for the run.';
+
+// Story 008 AC 7: get-evidence waits for a run in progress, checking every 2 s, and stops before
+// 40 s so the action ends well inside Rovo's 55 s limit.
+const EVIDENCE_WAIT_MS = 40000;
+const POLL_MS = 2000;
+const STILL_RUNNING = 'Still running. Ask me to continue in a moment.';
+
+// Story 008 AC 2: one line per drop code on how to fix the reason, so the agent resubmits only
+// what it changed (M3 QA: it resent unchanged reasons).
+const DROP_FIXES = {
+  'not-an-object': 'Send each reason as a JSON object.',
+  'missing-title': 'Add a short title.',
+  'missing-likelihood': 'Set likelihood to High, Medium or Low.',
+  'missing-mitigation': 'Add a one-sentence mitigation.',
+  'no-history-evidence': 'Cite at least one evidence ID from get-evidence.',
+  'unknown-number': 'Use only numbers that appear in the facts this reason cites, copied exactly.',
+  'unknown-key': 'Use only work item keys that appear in the evidence this reason cites.',
+  link: 'Remove web addresses and links.',
+  duplicate: 'Give each reason its own title.',
+  'over-five': 'Keep at most 5 reasons.',
+};
+
+// The panel's headline for the stored pack ("It's ‹date›, and ‹epic› has failed. Here's why."),
+// with the note when launch day is imagined because the epic has no due date.
+function headlineOf(pack, nowMs) {
+  const { text, note } = headline({ summary: pack.epic.summary, due: pack.epic.due, today: new Date(nowMs) });
+  return note ? { headline: text, headlineNote: note } : { headline: text };
+}
 
 // The epic as the user sees it ({ key, id }; storage is keyed by the ID), or the message for a work
 // item they can't see or that isn't an epic.
@@ -29,24 +60,31 @@ export async function runPremortemAction({ deps, epicKey, accountId }) {
   const result = await startRun({ ...deps, epicKey, accountId });
   if (result.error) return result;
   const message = result.status === 'started'
-    ? `Forewarned started building the evidence for ${epicKey}. Call get-evidence in about a minute.`
-    : `A run for ${epicKey} is already in progress. Call get-evidence in about a minute.`;
+    ? `Forewarned started building the evidence for ${epicKey}. ${callGetEvidence}`
+    : `A run for ${epicKey} is already in progress. ${callGetEvidence}`;
   return { epicKey, ...result, message };
 }
 
 // get-evidence: the stored pack, so the agent cites exactly what submit-premortem checks against,
-// without the evidence the reader can't see (story 002 AC 2). With no pack, a failed last run says
-// why, so the agent can tell the user before it tries again.
+// without the evidence the reader can't see (story 002 AC 2), plus the panel's headline. A run in
+// progress is waited for (story 008 AC 4, 7). With no pack, or when the run it waited for failed,
+// the failure says why, so the agent can tell the user before it tries again.
 export async function getEvidenceAction({ deps, epicKey: requestedKey }) {
   const { epic, error } = await epicFor(deps.port, requestedKey);
   if (error) return { error };
-  const status = await readRunStatus(deps.kvs, epic.id);
-  if (isRunInProgress(status, deps.now())) return { error: IN_PROGRESS };
-  const stored = await readPremortem(deps.kvs, epic.id);
-  if (!stored) {
-    return { error: status?.status === 'failed' ? `The last run failed: ${status.error} Ask the user whether to run it again.` : noEvidence(epic.key) };
+  const waitStart = deps.now();
+  let status = await readRunStatus(deps.kvs, epic.id);
+  const waited = isRunInProgress(status, waitStart);
+  while (isRunInProgress(status, deps.now())) {
+    if (deps.now() - waitStart + POLL_MS > EVIDENCE_WAIT_MS) return { epicKey: epic.key, status: 'running', message: STILL_RUNNING };
+    await deps.sleep(POLL_MS);
+    status = await readRunStatus(deps.kvs, epic.id);
   }
-  return { epicKey: epic.key, ...packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack)) };
+  // The user asked for this run, so older evidence would answer the wrong question.
+  if (waited && status?.status === 'failed') return { error: lastRunFailed(status) };
+  const stored = await readPremortem(deps.kvs, epic.id);
+  if (!stored) return { error: status?.status === 'failed' ? lastRunFailed(status) : noEvidence(epic.key) };
+  return { epicKey: epic.key, ...headlineOf(stored.pack, deps.now()), ...packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack)) };
 }
 
 // submit-premortem: validates the agent's reasons against the part of the stored pack the user can
@@ -69,7 +107,8 @@ export async function submitPremortemAction({ deps, epicKey: requestedKey, accou
   }
 
   const visiblePack = packForReader(stored.pack, await hiddenEvidenceIds(deps.port, stored.pack));
-  const { kept, dropped, droppedByRule } = validateReasons(parsed.reasons, visiblePack);
+  const { kept, droppedByRule, ...validated } = validateReasons(parsed.reasons, visiblePack);
+  const dropped = validated.dropped.map((drop) => ({ ...drop, fix: DROP_FIXES[drop.code] }));
   for (const { code } of dropped) deps.log(`Reason dropped: ${code}`);
   if (!kept.length) {
     return { saved: false, error: 'No reason checked out against the evidence, so nothing was saved.', dropped };

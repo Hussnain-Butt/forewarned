@@ -30,6 +30,8 @@ const realDeps = () => ({
   kvs,
   queue: runQueue,
   now: Date.now,
+  // get-evidence waits between run status checks (story 008 AC 7).
+  sleep: (ms) => new Promise((done) => { setTimeout(done, ms); }),
   newId: randomUUID,
   log: console.log,
 });
