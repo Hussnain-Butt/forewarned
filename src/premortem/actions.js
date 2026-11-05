@@ -67,7 +67,8 @@ function untilReset(resetsAt, nowMs) {
   const minutes = Math.ceil((Date.parse(resetsAt) - nowMs) / 60000);
   return minutes < 60 ? `in ${counted(minutes, 'minute')}` : `in about ${counted(Math.round(minutes / 60), 'hour')}`;
 }
-const OFFER_LAST = 'Offer to show the last pre-mortem.';
+// The epic may have no pre-mortem yet; get-premortem says so when asked (M8 copy review).
+const OFFER_LAST = 'Offer to show the last pre-mortem, if there is one.';
 
 // run-premortem: the agent's way to start compute (the shared start function, AC 1). The agent never
 // skips the cache: "Run again anyway" is the panel's (story 009 AC 7). It doesn't know the user's
@@ -82,8 +83,9 @@ export async function runPremortemAction({ deps, epicKey, accountId }) {
         : `New Forewarned runs are paused on this site for now. ${OFFER_LAST}`,
     };
   }
+  // The user asked for a new run, so they hear that the last one was kept and how to force one.
   if (result.status === 'cached') {
-    const message = `Nothing in ${epicKey} has changed since the last run at ${exactTime(result.runAt, 'UTC')} UTC, so Forewarned kept that evidence. Call get-evidence now.`;
+    const message = `Nothing in ${epicKey} has changed since the last run at ${exactTime(result.runAt, 'UTC')} UTC, so Forewarned kept that evidence. Tell the user so, and that Run again anyway in the Forewarned panel starts a new run. Then call get-evidence.`;
     return { epicKey, ...result, message };
   }
   const message = result.status === 'started'

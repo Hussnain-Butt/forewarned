@@ -65,7 +65,7 @@ test('run-premortem relays the cache', async () => {
     epicKey: EPIC,
     status: 'cached',
     runAt: '2026-11-02T06:12:00.000Z',
-    message: `Nothing in ${EPIC} has changed since the last run at 2 Nov 2026, 06:12 UTC, so Forewarned kept that evidence. Call get-evidence now.`,
+    message: `Nothing in ${EPIC} has changed since the last run at 2 Nov 2026, 06:12 UTC, so Forewarned kept that evidence. Tell the user so, and that Run again anyway in the Forewarned panel starts a new run. Then call get-evidence.`,
   });
   assert.equal(deps.queue.pushes.length, 0);
 });
@@ -75,12 +75,12 @@ test('run-premortem relays the daily limit and the emergency brake', async () =>
   const { deps, kvs } = await setup({ withRun: false });
   await kvs.set('runs:2026-11-02', 15);
   assert.deepEqual(await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' }),
-    { error: "Forewarned's daily limit on this site is reached. It resets at 00:00 UTC, in about 16 hours. Offer to show the last pre-mortem." });
+    { error: "Forewarned's daily limit on this site is reached. It resets at 00:00 UTC, in about 16 hours. Offer to show the last pre-mortem, if there is one." });
   deps.clock.now = Date.parse('2026-11-02T23:35:00.000Z');
   assert.deepEqual(await runPremortemAction({ deps, epicKey: EPIC, accountId: 'acc-1' }),
-    { error: "Forewarned's daily limit on this site is reached. It resets at 00:00 UTC, in 25 minutes. Offer to show the last pre-mortem." });
+    { error: "Forewarned's daily limit on this site is reached. It resets at 00:00 UTC, in 25 minutes. Offer to show the last pre-mortem, if there is one." });
   assert.deepEqual(await runPremortemAction({ deps: { ...deps, cap: 0 }, epicKey: EPIC, accountId: 'acc-1' }),
-    { error: 'New Forewarned runs are paused on this site for now. Offer to show the last pre-mortem.' });
+    { error: 'New Forewarned runs are paused on this site for now. Offer to show the last pre-mortem, if there is one.' });
   assert.equal(deps.queue.pushes.length, 0);
 });
 
