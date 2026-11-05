@@ -156,6 +156,20 @@ test('a title taken by another page gets the date', async () => {
   assert.equal(result.dated, true);
 });
 
+// Site check, 5 Nov 2026: an archived page keeps its title in the space, so Confluence refused the
+// create (400) and every click failed. An archived page counts as taken, so the new one is dated.
+test('an archived page that holds the title dates the new one', async () => {
+  const kvs = await withRun();
+  const confluence = fakeConfluence();
+  await write(depsFor({ kvs, confluence }));
+  confluence.pages[0].status = 'archived';
+  const again = await write(depsFor({ kvs, confluence }));
+  assert.equal(confluence.updated.length, 0, 'an archived stored page is not updated');
+  assert.equal(confluence.created.length, 2);
+  assert.equal(confluence.created[1].title, `${titleOf(kvs)} (2 Nov 2026)`);
+  assert.equal(again.dated, true);
+});
+
 test('a dated title that is taken too is refused', async () => {
   const kvs = await withRun();
   const dated = `${titleOf(kvs)} (2 Nov 2026)`;

@@ -130,7 +130,8 @@ export function fakeConfluence({ spaces = SPACES, creatable = ['101', '102', '10
       const page = pages.find((p) => p.id === String(id));
       return page ? json(page) : json({}, 404);
     },
-    pagesByTitle: async (spaceId, title) => json({ results: pages.filter((p) => p.spaceId === String(spaceId) && p.title === title && p.status === 'current') }),
+    // Like the sender's request: published and archived pages with that exact title.
+    pagesByTitle: async (spaceId, title) => json({ results: pages.filter((p) => p.spaceId === String(spaceId) && p.title === title && ['current', 'archived'].includes(p.status)) }),
     createPage: async (body) => {
       const id = String(7001 + created.length);
       created.push(body);

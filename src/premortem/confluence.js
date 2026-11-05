@@ -155,7 +155,7 @@ async function updateStored({ confluence, page, current, body, space }) {
   }
 }
 
-// AC 3 and 13: creates the page; a title another page already has gets the date.
+// AC 3 and 13: creates the page; a title another page already has (published or archived) gets the date.
 async function createNew({ confluence, spaceId, summary, epicKey, writtenOn, body, space }) {
   try {
     const taken = async (title) => ((await confluence.pagesByTitle(spaceId, title))?.results ?? []).length > 0;

@@ -19,9 +19,10 @@ export function confluenceSenders(confluence = api.asUser()) {
     spaces: () => confluence.requestConfluence(route`/wiki/api/v2/spaces?status=current&sort=name&limit=250`, GET),
     space: (spaceId) => confluence.requestConfluence(route`/wiki/api/v2/spaces/${spaceId}`, GET),
     spaceOperations: (spaceId) => confluence.requestConfluence(route`/wiki/api/v2/spaces/${spaceId}/operations`, GET),
-    // The stored page (its version and status) and the published pages that already have a title.
+    // The stored page (its version and status), and the pages that already hold a title: published and
+    // archived ones, since an archived page keeps its title in the space (checked on the site).
     page: (pageId) => confluence.requestConfluence(route`/wiki/api/v2/pages/${pageId}`, GET),
-    pagesByTitle: (spaceId, title) => confluence.requestConfluence(route`/wiki/api/v2/pages?space-id=${spaceId}&title=${title}&status=current&limit=5`, GET),
+    pagesByTitle: (spaceId, title) => confluence.requestConfluence(route`/wiki/api/v2/pages?space-id=${spaceId}&title=${title}&status=current&status=archived&limit=5`, GET),
     createPage: (body) => confluence.requestConfluence(route`/wiki/api/v2/pages`, withBody('POST', body)),
     updatePage: (pageId, body) => confluence.requestConfluence(route`/wiki/api/v2/pages/${pageId}`, withBody('PUT', body)),
   };
