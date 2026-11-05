@@ -8,7 +8,7 @@ import { kvs } from '@forge/kvs';
 import { randomUUID } from 'node:crypto';
 import { forgeSenders } from '../engine/forge-jira.js';
 import { createJira } from '../engine/jira.js';
-import { getEvidenceAction, getPremortemAction, runPremortemAction, submitPremortemAction } from '../premortem/actions.js';
+import { explainReasonAction, getEvidenceAction, getPremortemAction, runPremortemAction, submitPremortemAction } from '../premortem/actions.js';
 
 const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9_]*-\d+$/;
 // Rovo actions get 55 s; retries stop once they would end after this.
@@ -65,3 +65,10 @@ export const submitPremortem = action('submit-premortem', ({ deps, epicKey, payl
 }));
 
 export const getPremortem = action('get-premortem', ({ deps, epicKey }) => getPremortemAction({ deps, epicKey }));
+
+export const explainReason = action('explain-reason', ({ deps, epicKey, payload }) => explainReasonAction({
+  deps,
+  epicKey,
+  reasonNumber: payload.reasonNumber,
+  source: payload.source,
+}));
