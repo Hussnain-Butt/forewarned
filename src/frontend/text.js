@@ -147,12 +147,13 @@ export function timeWithDay(iso, now, timeZone) {
 }
 
 // Story 005 AC 24 with the cap from FW_DAILY_RUN_CAP; a cap of 0 is the developer's emergency brake
-// (story 009 AC 5), so there is no reset to wait for.
+// (story 009 AC 5), so there is no reset to wait for. The message sits next to Re-run, under the
+// report, hence "above" (M8 site QA; story 005 AC 24 said "below").
 export function capLine({ cap, resetsAt, hasReport, now, timeZone }) {
   const line = cap > 0
     ? `Forewarned has run ${counted(cap, 'pre-mortem')} on this site today, the daily limit that keeps it free to run. It resets at ${timeWithDay(resetsAt, now, timeZone)}.`
     : 'New runs are paused on this site for now, to keep Forewarned free to run.';
-  return hasReport ? `${line} The last report is below.` : line;
+  return hasReport ? `${line} The last report is above.` : line;
 }
 
 // Story 005 AC 25: Run found nothing changed since the last run (story 009 AC 6).

@@ -240,12 +240,12 @@ test("timeWithDay says today, tomorrow or yesterday in the reader's time zone", 
 test('capLine', () => {
   const now = TODAY.getTime();
   assert.equal(capLine({ cap: 15, resetsAt: RESET, hasReport: true, now, timeZone: KARACHI }),
-    'Forewarned has run 15 pre-mortems on this site today, the daily limit that keeps it free to run. It resets at 05:00 tomorrow. The last report is below.');
+    'Forewarned has run 15 pre-mortems on this site today, the daily limit that keeps it free to run. It resets at 05:00 tomorrow. The last report is above.');
   assert.equal(capLine({ cap: 15, resetsAt: RESET, hasReport: false, now, timeZone: KARACHI }),
     'Forewarned has run 15 pre-mortems on this site today, the daily limit that keeps it free to run. It resets at 05:00 tomorrow.');
   assert.match(capLine({ cap: 1, resetsAt: RESET, hasReport: false, now, timeZone: KARACHI }), /^Forewarned has run 1 pre-mortem on this site today,/);
   assert.equal(capLine({ cap: 0, resetsAt: RESET, hasReport: true, now, timeZone: KARACHI }),
-    'New runs are paused on this site for now, to keep Forewarned free to run. The last report is below.');
+    'New runs are paused on this site for now, to keep Forewarned free to run. The last report is above.');
   assert.equal(capLine({ cap: 0, resetsAt: RESET, hasReport: false, now, timeZone: KARACHI }),
     'New runs are paused on this site for now, to keep Forewarned free to run.');
 });
