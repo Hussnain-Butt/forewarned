@@ -134,7 +134,7 @@ const App = () => {
   };
 
   // AC 19: checks for the agent's write-up every 5 s until 3 minutes after the request, without a
-  // reload. Checking goes on quietly after a save, for 3 minutes after the latest one, so the
+  // reload. After a save that dropped reasons, checking goes on quietly for 3 more minutes, so the
   // agent's fixed resubmission (story 008) replaces it too.
   const waitForAgent = async (savedBefore, hadCurrentAgent, startedAt) => {
     setAgentWait('waiting');

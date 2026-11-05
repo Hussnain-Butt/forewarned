@@ -172,7 +172,7 @@ function reasonNumberOf(value) {
 function sourceOf(value) {
   const text = typeof value === 'string' ? value.trim().toLowerCase().replace(/[\s_]+/g, '-') : '';
   if (!text) return { source: null };
-  return LIST_NAMES[text] ? { source: text } : { error: 'source must be "agent" or "rule-based".' };
+  return Object.hasOwn(LIST_NAMES, text) ? { source: text } : { error: 'source must be "agent" or "rule-based".' };
 }
 
 // explain-reason (story 008 AC 4, 10): one numbered reason with every fact it cites in full, so the

@@ -320,6 +320,8 @@ test('explain-reason explains wrong numbers and sources plainly', async () => {
     assert.deepEqual(await explain({ reasonNumber: bad }), { error: 'reasonNumber must be a whole number from 1 to 5.' }, String(bad));
   }
   assert.equal((await explain({ reasonNumber: 1, source: 'Rule based' })).source, 'rule-based');
+  // Names every object has are not lists (ponytail-review 2).
+  assert.deepEqual(await explain({ reasonNumber: 1, source: 'constructor' }), { error: 'source must be "agent" or "rule-based".' });
   assert.equal((await explain({ reasonNumber: 1, source: ' ' })).source, 'agent');
   assert.deepEqual(await explain({ reasonNumber: 1, source: 'ai' }), { error: 'source must be "agent" or "rule-based".' });
   assert.deepEqual(await explain({ reasonNumber: 3, source: 'agent' }), { error: `The agent write-up for ${EPIC} has 2 reasons, so there is no reason 3.` });
