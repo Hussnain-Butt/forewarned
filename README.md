@@ -61,11 +61,11 @@ The `@forge` packages are Atlassian's and come from npm under the terms in their
 ## Privacy
 
 - **What it reads:** the epic, its child work items, finished epics in the same space from the last 12 months, linked blockers, and the open work of the people on the epic. It reads Jira as the person who asked, also in the background run.
-- **What it stores:** the evidence and the report, in Forge storage (KVS) on Atlassian's cloud, until the next run replaces them. The facts can name the people on the epic with their open work counts, and the report keeps the Atlassian account ID of whoever ran or saved it. No tokens or passwords.
+- **What it stores:** the evidence and the report, in Forge storage (KVS) on Atlassian's cloud. The evidence names the people on the epic with their open work counts. Forewarned also keeps the Atlassian account ID of whoever ran the last pre-mortem, saved the agent's write-up, created tasks from the panel or wrote the Confluence page. Each stays until a later action of the same kind replaces it, or until 28 days after the app is uninstalled. No tokens or passwords.
 - **Who sees it:** only people who can see the epic, and without evidence about work items they can't see. Known limit: on sites that restrict single work items with security levels, counts inside a fact aren't re-checked per reader (details in [JUDGES_SETUP.md](JUDGES_SETUP.md)).
-- **What it writes:** Jira tasks or a Confluence page, only when someone clicks, as that person.
+- **What it writes:** Jira tasks or a Confluence page, only when someone clicks, as that person. They copy the facts their reasons cite, names and open work counts included, for everyone who can see that space; only facts the person who clicks can see are copied.
 - **Where data goes:** nowhere outside Atlassian. No external egress, no AI keys, no Forge LLM; the optional Rovo agent is Atlassian's own AI on your site. Logs hold counts and error codes only.
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). It covers the code in this repository; each library keeps its own licence.
+MIT, see [LICENSE](LICENSE). The app was scaffolded with `forge create` from Atlassian's `jira-issue-panel-ui-kit` template (hence the package name); `AGENTS.md` is that template's file, not ours. It covers the code in this repository; each library keeps its own licence.

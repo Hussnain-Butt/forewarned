@@ -41,7 +41,7 @@ People are roles, not users. Each external ID starts with a role prefix: `ll` la
 
 Load numbers count seeded work items only; on a live site each user also has the open work items they already had. Day counts have a tolerance of ±1 because of time zones. The full expected evidence is in `answer-key.json`.
 
-## Import on a site (target: 10 minutes or less)
+## Import on a site (target was 10 minutes or less; measured about 15)
 
 Measured end to end: **about 15 minutes** on 7 Nov 2026, on a fresh developer site following the judge path in `JUDGES_SETUP.md` (two spaces, the import, the self-assign bulk edit and a run; the import itself took about 6 minutes). That run used no personas and no post-step (steps 5–7 below), which add a few minutes (AC 26).
 

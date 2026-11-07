@@ -1,5 +1,7 @@
 # Security review: M3 pre-mortem run (branch `m3-premortem-run`)
 
+> **Status (7 Nov 2026): all three findings were fixed on 2 Nov 2026, before any release.** Forewarned no longer stores anything on the epic (the pack and report live in Forge KVS), so the proof-of-concept steps below no longer apply. See "Remediation" at the end; the run cap listed there as open came with M8 (story 009).
+
 Date: 2 Nov 2026. Reviewer: Claude with the `forge-security-review` skill (manual, code-based, rule-based). Scope: `git diff master..HEAD` in `codegeist/`: `manifest.yml`, `src/premortem/*.js`, `src/actions/index.js`, `src/resolvers/index.js`, `src/frontend/index.jsx`, the M3 changes in `src/engine/*.js`, `package.json` and `package-lock.json` (tests read for intent only). Rules loaded: `_global-forge`, `forge-authn-authz` (index, prefer-context-authz, missing-resolver-authz), `forge-rovo-agents` (index, agent-privilege-escalation), `forge-tenant-isolation` (index, global-state-warmstart), `forge-injection` (index, prototype-pollution), `forge-manifest-config` (index, permission-scopes), `forge-secrets-storage` (index), `forge-auditing` (index).
 
 **Result: three confirmed findings (two Medium, one Low), all about who can read or write the stored pack and report.** The impersonation design holds: the queue consumer can only act as the user who clicked Run or asked the agent. Eight concerns need validation; one dependency note.
