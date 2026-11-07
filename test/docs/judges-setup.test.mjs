@@ -4,7 +4,7 @@
 // so later edits (screenshot retakes, copy fixes) can't quietly break it.
 
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
@@ -38,15 +38,27 @@ test('the guide has the nine sections in order (AC 1)', () => {
   assert.deepEqual(headings, SECTIONS);
 });
 
-test('troubleshooting has at least 10 entries, including the ones AC 1.7 names', () => {
-  const text = section('Troubleshooting');
-  // An entry is a level-3 heading or a table body row (not the header row or its separator).
-  const rows = text.split(/\r?\n/).filter((line) => line.startsWith('| ') && !/^\|\s*-/.test(line));
-  const tableEntries = Math.max(rows.length - 1, 0);
-  const headingEntries = text.split(/\r?\n/).filter((line) => line.startsWith('### ')).length;
-  assert.ok(tableEntries + headingEntries >= 10, `found ${tableEntries + headingEntries} entries`);
-  for (const word of ['epic', 'daily limit', 'Retrieving projects', 'Rovo', 'Confluence']) {
-    assert.match(text, new RegExp(word, 'i'), `troubleshooting mentions "${word}"`);
+// Story 010 AC 1.7: each named problem has its own row, found by its symptom (the first cell), so
+// a word that also appears in another row's fix can't stand in for a deleted row.
+const AC_17_SYMPTOMS = {
+  'panel not visible: epics only': /panel on a story or task/,
+  'Run disabled: edit permission': /permission to edit this epic/,
+  'daily limit reached': /has run \d+ pre-mortems on this site today/,
+  'Rovo off': /Rovo isn't turned on/,
+  'Confluence not available': /Confluence isn't available/,
+  'import fails at "Retrieving projects"': /Retrieving projects/,
+  'leftover sample work items': /[Ll]eftover sample work items/,
+  'dates look shifted': /Dates look shifted/,
+  "the agent didn't save": /agent didn't save/,
+  'tasks not visible until reload': /Reload the page to see the new tasks/,
+};
+
+test('troubleshooting has at least 10 rows, one for each problem AC 1.7 names', () => {
+  const rows = section('Troubleshooting').split(/\r?\n/).filter((line) => line.startsWith('| ')).slice(1);
+  const symptoms = rows.map((row) => row.split('|')[1]);
+  assert.ok(symptoms.length >= 10, `found ${symptoms.length} rows`);
+  for (const [problem, pattern] of Object.entries(AC_17_SYMPTOMS)) {
+    assert.ok(symptoms.some((symptom) => pattern.test(symptom)), `a row's symptom covers "${problem}"`);
   }
 });
 
@@ -54,7 +66,7 @@ test('the guide holds no secret, personal email or placeholder (AC 4)', () => {
   assert.ok(guide.length > 0, 'the guide exists');
   assert.doesNotMatch(guide, /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i, 'no email address');
   assert.doesNotMatch(guide, /gho_|ghp_|ATATT/, 'no GitHub or Atlassian token');
-  assert.doesNotMatch(guide, /TODO|TBD|‹/, 'no placeholder');
+  assert.doesNotMatch(guide, /TODO|TBD|FIXME|XXX|\bCHECK\b|‹/, 'no placeholder or draft marker');
 });
 
 test("the guide doesn't depend on our demo site or the development environment", () => {
@@ -63,10 +75,17 @@ test("the guide doesn't depend on our demo site or the development environment",
   assert.doesNotMatch(guide, /-e development|\(development\)/);
 });
 
-test('every image in the guide exists', () => {
-  const images = [...guide.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map((match) => match[1]);
-  for (const path of images.filter((p) => !/^https?:/.test(p))) {
-    assert.ok(existsSync(new URL(path, GUIDE_URL)), `image ${path} exists`);
+// AC 2: the three screenshots (install, first run, report) are in the guide, and each relative
+// image exists with exactly this spelling: Windows ignores case, GitHub doesn't.
+test('the guide shows its 3 screenshots, each spelled exactly as the file', () => {
+  const images = [...guide.matchAll(/!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map((match) => match[1]);
+  const local = images.filter((p) => !/^https?:/.test(p));
+  assert.ok(local.length >= 3, `found ${local.length} images`);
+  for (const path of local) {
+    const file = new URL(path, GUIDE_URL);
+    const name = path.split('/').pop();
+    assert.ok(existsSync(file), `image ${path} exists`);
+    assert.ok(readdirSync(new URL('.', file)).includes(name), `image ${path} is spelled as on disk`);
   }
 });
 
