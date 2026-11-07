@@ -43,7 +43,7 @@ Load numbers count seeded work items only; on a live site each user also has the
 
 ## Import on a site (target: 10 minutes or less)
 
-Measured end to end: **not timed yet**. After the first real run, write the date and minutes here (AC 26).
+Measured end to end: **about 15 minutes** on 7 Nov 2026, on a fresh developer site following the judge path in `JUDGES_SETUP.md` (two spaces, the import, the self-assign bulk edit and a run; the import itself took about 6 minutes). That run used no personas and no post-step (steps 5–7 below), which add a few minutes (AC 26).
 
 Before the first recording, delete the M0c spike space **FWS** and its work items (it also holds the future-date check item).
 
