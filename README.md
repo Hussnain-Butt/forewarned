@@ -6,7 +6,7 @@ Forewarned imagines that an epic has already failed and shows the most likely re
 
 ## Try it
 
-Follow [JUDGES_SETUP.md](JUDGES_SETUP.md): install from the link and run it on any epic in about 5 minutes, then import the optional demo history in about 10 more.
+Follow [JUDGES_SETUP.md](JUDGES_SETUP.md): install from the link and run it on any epic in about 5 minutes, then import the optional demo history in about 15 more.
 
 ## How it works
 
